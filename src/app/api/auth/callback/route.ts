@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/?error=no_code`);
     }
 
-    // Exchange code for access token
+    // 1. Exchange code for access token
     const tokenResponse = await fetch('https://github.com/login/oauth/access_token', {
       method: 'POST',
       headers: {
@@ -31,38 +31,54 @@ export async function GET(request: NextRequest) {
     const tokenData = await tokenResponse.json();
 
     if (tokenData.error) {
+      console.error('Token Error:', tokenData);
       return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/?error=token_error`);
     }
 
     const accessToken = tokenData.access_token;
 
-    // Get user info from GitHub
+    // 2. Get User Info
     const userResponse = await fetch('https://api.github.com/user', {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
+      headers: { Authorization: `Bearer ${accessToken}` },
     });
+    
+    if (!userResponse.ok) {
+        console.error('User Fetch Error:', await userResponse.text());
+        return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/?error=user_fetch_failed`);
+    }
 
     const githubUser = await userResponse.json();
 
-    // Get user email
-    const emailResponse = await fetch('https://api.github.com/user/emails', {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    });
+    // 3. Get Emails (Safe Version)
+    let primaryEmail = githubUser.email; // Try public email first
 
-    const emails = await emailResponse.json();
-    const primaryEmail = emails.find((e: any) => e.primary)?.email || emails[0]?.email;
+    // Only try to fetch private emails if we don't have one yet
+    if (!primaryEmail) {
+        const emailResponse = await fetch('https://api.github.com/user/emails', {
+            headers: { Authorization: `Bearer ${accessToken}` },
+        });
 
-    // Check if user exists in database
+        if (emailResponse.ok) {
+            const emails = await emailResponse.json();
+            // Check if it's actually an array before trying to .find()
+            if (Array.isArray(emails)) {
+                primaryEmail = emails.find((e: any) => e.primary)?.email || emails[0]?.email;
+            }
+        }
+    }
+
+    // Fallback if absolutely no email found (rare, but prevents crash)
+    if (!primaryEmail) {
+        primaryEmail = `${githubUser.id}+${githubUser.login}@users.noreply.github.com`;
+    }
+
+    // 4. Database Logic (Keep your existing logic)
     let [user] = await query<any[]>(
       'SELECT id FROM users WHERE email = ?',
       [primaryEmail]
     );
 
     if (!user) {
-      // Create new user
       const userId = uuidv4();
       await query(
         `INSERT INTO users (id, email, name) VALUES (?, ?, ?)`,
@@ -71,7 +87,7 @@ export async function GET(request: NextRequest) {
       user = { id: userId };
     }
 
-    // Create session
+    // 5. Create Session
     const cookieStore = await cookies();
     const session = await getIronSession<SessionData>(cookieStore, sessionOptions);
     session.user = {
@@ -85,7 +101,7 @@ export async function GET(request: NextRequest) {
     session.isLoggedIn = true;
     await session.save();
 
-    // Link any installations for this GitHub account to this user
+    // Link installations
     await query(
       `UPDATE github_installations 
        SET user_id = ? 
@@ -93,8 +109,8 @@ export async function GET(request: NextRequest) {
       [user.id, githubUser.login]
     );
 
-    // Redirect to dashboard
     return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/dashboard`);
+    
   } catch (error) {
     console.error('Auth callback error:', error);
     return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/?error=auth_failed`);

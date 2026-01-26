@@ -260,7 +260,7 @@ export default function Dashboard() {
                     <p className="text-gray-600 font-medium mb-2">No installations yet</p>
                     <p className="text-sm text-gray-500 mb-4">Install the GitHub App to get started</p>
                     <a 
-                      href="https://github.com/apps/deplai-dev-rohan/installations/new"
+                      href="https://github.com/apps/deplai-gitapp-aj/installations/new"
                       target="_blank"
                       className="inline-block bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 transition"
                     >
