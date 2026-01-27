@@ -102,3 +102,28 @@ CREATE TABLE runs (
     INDEX idx_status (status),
     INDEX idx_created_at (created_at)
 );
+-- Findings table
+CREATE TABLE findings (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+
+  scan_id VARCHAR(255) NOT NULL,
+  repo_url TEXT NOT NULL,
+
+  category VARCHAR(100),
+  severity ENUM('low', 'medium', 'high', 'critical') NOT NULL,
+  status ENUM('open', 'false_positive', 'fixed') DEFAULT 'open',
+
+  title VARCHAR(255) NOT NULL,
+  description TEXT,
+
+  tool VARCHAR(100),
+  evidence JSON,
+
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ON UPDATE CURRENT_TIMESTAMP,
+
+  INDEX idx_scan_id (scan_id),
+  INDEX idx_severity (severity),
+  INDEX idx_category (category)
+);

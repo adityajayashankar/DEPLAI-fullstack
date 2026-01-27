@@ -2,11 +2,13 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import CloudBoltIcon from '@/components/CloudBoltIcon';
-import ExitIcon from '@/components/ExitIcon';
+import CloudBoltIcon from '@/components/CloudBoltIcon'; // Ensure this path is correct
+import ExitIcon from '@/components/ExitIcon';           // Ensure this path is correct
 
 export default function Dashboard() {
   const router = useRouter();
+  
+  // -- State Management --
   const [user, setUser] = useState<any>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [installations, setInstallations] = useState<any[]>([]);
@@ -15,11 +17,14 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [refreshingInstallations, setRefreshingInstallations] = useState(false);
+  const [scanningProjects, setScanningProjects] = useState<Set<string>>(new Set());
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Check authentication
+  // -- Authentication & Initial Load --
   useEffect(() => {
     checkAuth();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function checkAuth() {
@@ -35,7 +40,7 @@ export default function Dashboard() {
       setUser(session.user);
       setAuthLoading(false);
       
-      // NEW: Setup installations first (links any unlinked ones)
+      // Setup installations first (links any unlinked ones)
       await setupInstallations();
       
       // Then fetch data
@@ -46,6 +51,8 @@ export default function Dashboard() {
       router.push('/');
     }
   }
+
+  // -- Data Fetching Functions --
 
   async function setupInstallations() {
     try {
@@ -83,6 +90,8 @@ export default function Dashboard() {
       setRefreshingInstallations(false);
     }
   }
+
+  // -- Action Handlers --
 
   async function handleFileUpload(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -165,6 +174,103 @@ export default function Dashboard() {
     router.push('/');
   }
 
+  async function handleTriggerScan(projectId: string, projectName: string) {
+    // Prevent duplicate scans
+    if (scanningProjects.has(projectId)) {
+      alert('Scan already in progress for this project');
+      return;
+    }
+
+    // Confirm with user
+    const confirmed = confirm(`Start security scan for "${projectName}"?`);
+    if (!confirmed) return;
+
+    // Mark as scanning
+    setScanningProjects(prev => new Set(prev).add(projectId));
+
+    try {
+      // Call the scan API
+      const response = await fetch('/api/scans/trigger', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId,
+          scanType: 'full',
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        alert(`Security scan started!\nScan ID: ${data.scanId}`);
+        // Navigate to results page
+        router.push(`/dashboard/scans/${data.scanId}`);
+      } else {
+        throw new Error(data.error || 'Failed to start scan');
+      }
+    } catch (error: any) {
+      console.error('Scan failed:', error);
+      alert(`Failed to start scan: ${error.message}`);
+      
+      // Remove from scanning set on error
+      setScanningProjects(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(projectId);
+        return newSet;
+      });
+    }
+  }
+
+  // DAST scan with custom URL
+  async function handleTriggerDASTScan(projectId: string, projectName: string) {
+    const targetUrl = prompt(
+      `Enter target URL for DAST scan of "${projectName}":\n\nExample: https://example.com`
+    );
+
+    if (!targetUrl) return;
+
+    // Validate URL format
+    try {
+      new URL(targetUrl);
+    } catch {
+      alert('Invalid URL format');
+      return;
+    }
+
+    setScanningProjects(prev => new Set(prev).add(projectId));
+
+    try {
+      const response = await fetch('/api/scans/trigger', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId,
+          scanType: 'full',
+          targetUrl, // Add target URL for DAST
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        alert(`Security scan started!\nScan ID: ${data.scanId}`);
+        router.push(`/dashboard/scans/${data.scanId}`);
+      } else {
+        throw new Error(data.error || 'Failed to start scan');
+      }
+    } catch (error: any) {
+      console.error('Scan failed:', error);
+      alert(`Failed to start scan: ${error.message}`);
+      
+      setScanningProjects(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(projectId);
+        return newSet;
+      });
+    }
+  }
+
+  // -- Loading State --
   if (authLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -176,8 +282,10 @@ export default function Dashboard() {
     );
   }
 
+  // -- Main JSX --
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Header */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
@@ -200,7 +308,7 @@ export default function Dashboard() {
       </header>
 
       <div className="container mx-auto px-6 py-8">
-        {/* Stats Cards - Only 2 cards now */}
+        {/* Stats Cards */}
         <div className="grid md:grid-cols-2 gap-6 mb-8">
           <div className="bg-white rounded-xl p-6 border border-gray-200">
             <div className="flex items-center justify-between mb-2">
@@ -434,14 +542,39 @@ export default function Dashboard() {
                                 Delete
                               </button>
                             )}
+                            
                             <button 
-                              className="text-sm text-blue-600 hover:text-blue-700 font-medium"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                console.log('Scan clicked for:', project.name);
-                              }}
+                                className={`text-sm font-medium px-4 py-2 rounded-lg transition ${
+                                  scanningProjects.has(project.id)
+                                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                    : 'text-white bg-blue-600 hover:bg-blue-700'
+                                }`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleTriggerScan(project.id, project.name);
+                                }}
+                                disabled={scanningProjects.has(project.id)}
                             >
-                              Scan Now
+                              {scanningProjects.has(project.id) ? (
+                                <span className="flex items-center space-x-2">
+                                  <div className="animate-spin w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full"></div>
+                                  <span>Scanning...</span>
+                                </span>
+                              ) : (
+                                'Scan Now'
+                              )}
+                            </button>
+
+                            {/* DAST scan button */}
+                            <button 
+                                className="text-sm text-blue-600 hover:text-blue-700 font-medium px-3 py-1 hover:bg-blue-50 rounded-lg transition"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleTriggerDASTScan(project.id, project.name);
+                                }}
+                                title="Scan with custom target URL"
+                            >
+                              DAST
                             </button>
                           </div>
                         </div>
