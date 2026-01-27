@@ -14,6 +14,7 @@ export default function Dashboard() {
   const [stats, setStats] = useState({ localCount: 0, githubCount: 0, totalCount: 0 });
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [refreshingInstallations, setRefreshingInstallations] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Check authentication
@@ -33,11 +34,24 @@ export default function Dashboard() {
       
       setUser(session.user);
       setAuthLoading(false);
+      
+      // NEW: Setup installations first (links any unlinked ones)
+      await setupInstallations();
+      
+      // Then fetch data
       fetchInstallations();
       fetchProjects();
     } catch (error) {
       console.error('Auth check failed:', error);
       router.push('/');
+    }
+  }
+
+  async function setupInstallations() {
+    try {
+      await fetch('/api/installations/setup', { method: 'POST' });
+    } catch (error) {
+      console.error('Setup installations failed:', error);
     }
   }
 
@@ -54,6 +68,20 @@ export default function Dashboard() {
     setProjects(data.projects || []);
     setStats(data.stats || { localCount: 0, githubCount: 0, totalCount: 0 });
     setLoading(false);
+  }
+
+  async function handleRefreshInstallations() {
+    setRefreshingInstallations(true);
+    try {
+      await fetch('/api/installations/setup', { method: 'POST' });
+      await fetchInstallations();
+      await fetchProjects();
+    } catch (error) {
+      console.error('Refresh failed:', error);
+      alert('Failed to refresh installations');
+    } finally {
+      setRefreshingInstallations(false);
+    }
   }
 
   async function handleFileUpload(event: React.ChangeEvent<HTMLInputElement>) {
@@ -246,7 +274,31 @@ export default function Dashboard() {
             {/* GitHub Installations */}
             <div className="bg-white rounded-xl border border-gray-200">
               <div className="p-6 border-b border-gray-200">
-                <h2 className="text-lg font-semibold text-gray-900">GitHub Accounts</h2>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-lg font-semibold text-gray-900">GitHub Accounts</h2>
+                  {installations.length > 0 && (
+                    <button
+                      onClick={handleRefreshInstallations}
+                      disabled={refreshingInstallations}
+                      className="text-sm text-blue-600 hover:text-blue-700 disabled:opacity-50 flex items-center space-x-1"
+                    >
+                      <svg
+                        className={`w-4 h-4 ${refreshingInstallations ? 'animate-spin' : ''}`}
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                        />
+                      </svg>
+                      <span>{refreshingInstallations ? 'Refreshing...' : 'Refresh'}</span>
+                    </button>
+                  )}
+                </div>
               </div>
               
               <div className="p-4">
@@ -262,10 +314,14 @@ export default function Dashboard() {
                     <a 
                       href="https://github.com/apps/deplai-gitapp-aj/installations/new"
                       target="_blank"
+                      rel="noopener noreferrer"
                       className="inline-block bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 transition"
                     >
                       Install GitHub App
                     </a>
+                    <p className="text-xs text-blue-600 mt-3">
+                      After installation, this page will refresh automatically
+                    </p>
                   </div>
                 ) : (
                   <div className="space-y-2">

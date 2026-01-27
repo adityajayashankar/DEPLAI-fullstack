@@ -72,7 +72,7 @@ export async function GET(request: NextRequest) {
         primaryEmail = `${githubUser.id}+${githubUser.login}@users.noreply.github.com`;
     }
 
-    // 4. Database Logic (Keep your existing logic)
+    // 4. Database Logic
     let [user] = await query<any[]>(
       'SELECT id FROM users WHERE email = ?',
       [primaryEmail]
@@ -101,12 +101,22 @@ export async function GET(request: NextRequest) {
     session.isLoggedIn = true;
     await session.save();
 
-    // Link installations
+    // 6. Link installations - IMPROVED VERSION
+    // Link by account login (username)
     await query(
       `UPDATE github_installations 
        SET user_id = ? 
-       WHERE account_login = ? AND user_id IS NULL`,
+       WHERE account_login = ?`,
       [user.id, githubUser.login]
+    );
+
+    // Also try to link by GitHub account ID from metadata
+    await query(
+      `UPDATE github_installations 
+       SET user_id = ? 
+       WHERE JSON_EXTRACT(metadata, '$.installation.account.id') = ? 
+       AND user_id IS NULL`,
+      [user.id, githubUser.id]
     );
 
     return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/dashboard`);
