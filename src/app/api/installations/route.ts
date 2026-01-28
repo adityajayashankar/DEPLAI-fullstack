@@ -4,9 +4,46 @@ import { getIronSession } from 'iron-session';
 import { cookies } from 'next/headers';
 import { sessionOptions, SessionData } from '@/lib/auth';
 
+// Handle GET requests (Fetch installations)
+export async function GET(request: NextRequest) {
+  try {
+    const cookieStore = await cookies();
+    const session = await getIronSession<SessionData>(cookieStore, sessionOptions);
+
+    if (!session.isLoggedIn || !session.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const installations = await query<any[]>(
+      `SELECT 
+        id,
+        installation_id,
+        account_login,
+        account_type,
+        installed_at,
+        created_at
+       FROM github_installations
+       WHERE user_id = ?
+       ORDER BY created_at DESC`,
+      [session.user.id]
+    );
+
+    return NextResponse.json({ 
+      success: true,
+      installations 
+    });
+  } catch (error: any) {
+    console.error('Fetch installations error:', error);
+    return NextResponse.json(
+      { error: 'Failed to fetch installations' },
+      { status: 500 }
+    );
+  }
+}
+
+// Handle POST requests (Link unlinked installations & Fetch)
 export async function POST(request: NextRequest) {
   try {
-    // Get authenticated user
     const cookieStore = await cookies();
     const session = await getIronSession<SessionData>(cookieStore, sessionOptions);
 

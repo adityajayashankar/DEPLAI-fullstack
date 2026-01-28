@@ -1,13 +1,15 @@
-'use client';
-
-import { use } from 'react';
+import { Suspense } from 'react';
 import Link from 'next/link';
 import ScanResults from '@/components/scanresults';
 import CloudBoltIcon from '@/components/CloudBoltIcon';
 
-export default function ScanDetailsPage({ params }: { params: Promise<{ id: string }> }) {
-  // Unwrap params using React.use() for Next.js 15+
-  const { id } = use(params);
+// ✅ CORRECT: This is a Server Component (Async, No 'use client')
+export default async function ScanDetailsPage(props: {
+  params: Promise<{ id: string }>;
+}) {
+  // Await the params (Next.js 15+ requirement)
+  const params = await props.params;
+  const { id } = params;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -44,7 +46,10 @@ export default function ScanDetailsPage({ params }: { params: Promise<{ id: stri
           <p className="text-gray-500 text-sm mt-1">Scan ID: {id}</p>
         </div>
 
-        <ScanResults scanId={id} />
+        {/* Pass ID to the Client Component */}
+        <Suspense fallback={<div>Loading scan...</div>}>
+          <ScanResults scanId={id} />
+        </Suspense>
       </main>
     </div>
   );

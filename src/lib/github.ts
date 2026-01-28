@@ -18,6 +18,37 @@ interface CachedToken {
   expiresAt: Date;
 }
 
+// ------------------------------------------------------------------
+// HELPER: Aggressively sanitize the private key to prevent OpenSSL errors
+// ------------------------------------------------------------------
+function formatPrivateKey(key: string): string {
+  if (!key) return '';
+  
+  let cleanKey = key.trim();
+
+  // 1. Remove surrounding quotes if present (common .env artifact)
+  if ((cleanKey.startsWith('"') && cleanKey.endsWith('"')) || 
+      (cleanKey.startsWith("'") && cleanKey.endsWith("'"))) {
+    cleanKey = cleanKey.slice(1, -1);
+  }
+
+  // 2. Handle literal escaped newlines (e.g. "\n" characters from .env)
+  cleanKey = cleanKey.replace(/\\n/g, '\n');
+
+  // 3. Ensure standard PEM headers exist and are separated by newlines
+  const header = '-----BEGIN RSA PRIVATE KEY-----';
+  const footer = '-----END RSA PRIVATE KEY-----';
+
+  if (cleanKey.includes(header) && !cleanKey.includes(header + '\n')) {
+    cleanKey = cleanKey.replace(header, header + '\n');
+  }
+  if (cleanKey.includes(footer) && !cleanKey.includes('\n' + footer)) {
+    cleanKey = cleanKey.replace(footer, '\n' + footer);
+  }
+
+  return cleanKey.trim();
+}
+
 export class GitHubService {
   private config: GitHubConfig;
   private app: Octokit;
@@ -25,11 +56,19 @@ export class GitHubService {
   constructor(config: GitHubConfig) {
     this.config = config;
     
+    // Apply the formatting fix to the key
+    const privateKey = formatPrivateKey(config.privateKey);
+
+    // Basic validation to warn in logs if key is still bad
+    if (!privateKey.includes('BEGIN') || !privateKey.includes('KEY')) {
+      console.error('CRITICAL: GITHUB_PRIVATE_KEY appears invalid or empty.');
+    }
+
     this.app = new Octokit({
       authStrategy: createAppAuth,
       auth: {
         appId: config.appId,
-        privateKey: config.privateKey.replace(/\\n/g, '\n'),
+        privateKey: privateKey,
       },
     });
   }
@@ -49,8 +88,11 @@ export class GitHubService {
       throw new Error('Installation not found');
     }
 
+    // FIX: Ensure installation_id is passed as a Number to the GitHub API
+    const ghInstallationId = Number(installation[0].installation_id);
+    
     const { data } = await this.app.apps.createInstallationAccessToken({
-      installation_id: installation[0].installation_id,
+      installation_id: ghInstallationId,
     });
 
     await this.cacheToken(installationId, data.token, data.expires_at);
@@ -125,7 +167,7 @@ export class GitHubService {
       fs.mkdirSync(parentDir, { recursive: true });
     }
 
-    // Remove if already exists
+    // Remove if already exists to ensure fresh clone
     if (fs.existsSync(repoPath)) {
       fs.rmSync(repoPath, { recursive: true, force: true });
     }
@@ -135,19 +177,17 @@ export class GitHubService {
 
     console.log(`Cloning ${owner}/${repo}...`);
 
-    // Try to clone with the specified branch, fallback to 'master' if 'main' fails
     try {
       await git.clone(cloneUrl, repoPath, [
         '--depth', '1',
         '--single-branch',
         '--branch', branch || 'main',
       ]);
-      
       console.log(`Cloned ${owner}/${repo} successfully`);
     } catch (error: any) {
-      // If 'main' fails, try 'master' as fallback
+      // Fallback: If 'main' fails, try 'master'
       if (error.message.includes('Remote branch main not found') || 
-          error.message.includes('Remote branch') && branch === 'main') {
+          (error.message.includes('Remote branch') && branch === 'main')) {
         console.log(`Branch 'main' not found, trying 'master' for ${owner}/${repo}...`);
         
         await git.clone(cloneUrl, repoPath, [
@@ -156,13 +196,9 @@ export class GitHubService {
           '--branch', 'master',
         ]);
         
-        console.log(`Cloned ${owner}/${repo} with 'master' branch successfully`);
-        
-        // Update database with correct branch
+        // Update database with correct branch for future reference
         await query(
-          `UPDATE github_repositories 
-           SET default_branch = 'master' 
-           WHERE full_name = ?`,
+          `UPDATE github_repositories SET default_branch = 'master' WHERE full_name = ?`,
           [`${owner}/${repo}`]
         );
       } else {
@@ -197,44 +233,30 @@ export class GitHubService {
       throw new Error('Repository not cloned yet');
     }
 
-    // Get the correct branch from database
     const [repoData] = await query<any[]>(
-      `SELECT default_branch FROM github_repositories 
-       WHERE full_name = ?`,
+      `SELECT default_branch FROM github_repositories WHERE full_name = ?`,
       [`${owner}/${repo}`]
     );
 
     const branch = repoData?.default_branch || 'main';
-
-    console.log(`Pulling latest changes for ${owner}/${repo} (branch: ${branch})...`);
-
     const git = simpleGit(repoPath);
     
     try {
       await git.pull('origin', branch);
-      console.log(`Updated ${owner}/${repo} successfully`);
     } catch (error: any) {
-      // If pulling fails, try the other common branch
+      // Fallback logic for pull
       const fallbackBranch = branch === 'main' ? 'master' : 'main';
       console.log(`Failed to pull '${branch}', trying '${fallbackBranch}'...`);
       
       await git.pull('origin', fallbackBranch);
       
-      // Update database with correct branch
       await query(
-        `UPDATE github_repositories 
-         SET default_branch = ? 
-         WHERE full_name = ?`,
+        `UPDATE github_repositories SET default_branch = ? WHERE full_name = ?`,
         [fallbackBranch, `${owner}/${repo}`]
       );
-      
-      console.log(`Updated ${owner}/${repo} with '${fallbackBranch}' branch successfully`);
     }
 
-    // Get new commit SHA
     const commitSha = await git.revparse(['HEAD']);
-
-    // Update database
     await query(
       `UPDATE github_repositories 
        SET needs_refresh = false,
@@ -256,23 +278,17 @@ export class GitHubService {
     repo: string
   ): Promise<string> {
     const repoPath = path.join(process.cwd(), 'tmp', 'repos', owner, repo);
-
-    // Check if needs refresh
     const [repoData] = await query<any[]>(
-      `SELECT needs_refresh, default_branch FROM github_repositories 
-       WHERE full_name = ?`,
+      `SELECT needs_refresh, default_branch FROM github_repositories WHERE full_name = ?`,
       [`${owner}/${repo}`]
     );
 
-    if (!repoData) {
-      throw new Error('Repository not found in database');
-    }
+    if (!repoData) throw new Error('Repository not found in database');
 
     const needsRefresh = repoData.needs_refresh || !fs.existsSync(repoPath);
 
     if (needsRefresh) {
       if (!fs.existsSync(repoPath)) {
-        // First time: clone
         return await this.cloneRepository(
           installationId,
           owner,
@@ -280,11 +296,9 @@ export class GitHubService {
           repoData.default_branch
         );
       } else {
-        // Already exists: pull
         return await this.pullRepository(owner, repo);
       }
     }
-
     return repoPath;
   }
 
@@ -300,9 +314,7 @@ export class GitHubService {
     const repoPath = await this.ensureRepoFresh(installationId, owner, repo);
     const fullPath = path.join(repoPath, dirPath);
 
-    if (!fs.existsSync(fullPath)) {
-      throw new Error('Path does not exist');
-    }
+    if (!fs.existsSync(fullPath)) throw new Error('Path does not exist');
 
     const items = fs.readdirSync(fullPath, { withFileTypes: true });
 
@@ -310,15 +322,12 @@ export class GitHubService {
       .filter(item => !item.name.startsWith('.')) // Hide hidden files
       .map(item => ({
         name: item.name,
-        path: path.join(dirPath, item.name).replace(/\\/g, '/'), // Normalize path separators
+        path: path.join(dirPath, item.name).replace(/\\/g, '/'),
         type: item.isDirectory() ? 'dir' : 'file',
         size: item.isFile() ? fs.statSync(path.join(fullPath, item.name)).size : null,
       }))
       .sort((a, b) => {
-        // Folders first, then files, alphabetically
-        if (a.type !== b.type) {
-          return a.type === 'dir' ? -1 : 1;
-        }
+        if (a.type !== b.type) return a.type === 'dir' ? -1 : 1;
         return a.name.localeCompare(b.name);
       });
   }
@@ -335,28 +344,17 @@ export class GitHubService {
     const repoPath = await this.ensureRepoFresh(installationId, owner, repo);
     const fullPath = path.join(repoPath, filePath);
 
-    if (!fs.existsSync(fullPath)) {
-      throw new Error('File does not exist');
-    }
-
-    if (fs.statSync(fullPath).isDirectory()) {
-      throw new Error('Path is a directory, not a file');
-    }
+    if (!fs.existsSync(fullPath)) throw new Error('File does not exist');
+    if (fs.statSync(fullPath).isDirectory()) throw new Error('Path is a directory, not a file');
 
     return fs.readFileSync(fullPath, 'utf-8');
   }
 
-  /**
-   * Force refresh repository
-   */
   async forceRefresh(installationId: string, owner: string, repo: string): Promise<void> {
     await query(
-      `UPDATE github_repositories 
-       SET needs_refresh = true 
-       WHERE full_name = ?`,
+      `UPDATE github_repositories SET needs_refresh = true WHERE full_name = ?`,
       [`${owner}/${repo}`]
     );
-
     await this.ensureRepoFresh(installationId, owner, repo);
   }
 
@@ -367,10 +365,7 @@ export class GitHubService {
   ): Promise<void> {
     const encrypted = encryptToken(token);
     const id = uuidv4();
-
-    // Convert ISO 8601 datetime to MySQL format
-    // GitHub returns: "2026-01-19T16:51:53Z"
-    // MySQL needs: "2026-01-19 16:51:53"
+    // Convert ISO datetime to MySQL format (remove 'T' and 'Z')
     const mysqlDateTime = expiresAt.replace('T', ' ').replace('Z', '');
 
     await query(
@@ -389,14 +384,11 @@ export class GitHubService {
        FROM github_access_tokens 
        WHERE installation_id = ? 
        AND expires_at > NOW()
-       ORDER BY expires_at DESC 
-       LIMIT 1`,
+       ORDER BY expires_at DESC LIMIT 1`,
       [installationId]
     );
 
-    if (!results || results.length === 0) {
-      return null;
-    }
+    if (!results || results.length === 0) return null;
 
     return {
       token: decryptToken(results[0].token_encrypted),

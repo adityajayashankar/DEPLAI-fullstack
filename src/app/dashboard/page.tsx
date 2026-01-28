@@ -56,7 +56,8 @@ export default function Dashboard() {
 
   async function setupInstallations() {
     try {
-      await fetch('/api/installations/setup', { method: 'POST' });
+      // Fix: Changed endpoint from /api/installations/setup to /api/installations
+      await fetch('/api/installations', { method: 'POST' });
     } catch (error) {
       console.error('Setup installations failed:', error);
     }
@@ -80,7 +81,8 @@ export default function Dashboard() {
   async function handleRefreshInstallations() {
     setRefreshingInstallations(true);
     try {
-      await fetch('/api/installations/setup', { method: 'POST' });
+      // Fix: Changed endpoint from /api/installations/setup to /api/installations
+      await fetch('/api/installations', { method: 'POST' });
       await fetchInstallations();
       await fetchProjects();
     } catch (error) {

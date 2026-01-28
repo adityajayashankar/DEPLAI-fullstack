@@ -1,344 +1,204 @@
-/**
- * Scan Results Component
- * Displays security findings from a completed scan
- */
-
 'use client';
 
-import { useState, useEffect } from 'react';
-
-interface Finding {
-  id: string;
-  category: string;
-  tool: string;
-  ruleId?: string;
-  title: string;
-  severity: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
-  confidence: string;
-  filePath?: string;
-  lineNumber?: number;
-  evidence?: Record<string, any>;
-  status: string;
-}
+import { useEffect, useState } from 'react';
+import FindingDetails from './FindingDetails'; // Import our new component
 
 interface ScanResultsProps {
   scanId: string;
 }
 
 export default function ScanResults({ scanId }: ScanResultsProps) {
-  const [loading, setLoading] = useState(true);
-  const [status, setStatus] = useState<any>(null);
-  const [findings, setFindings] = useState<Finding[]>([]);
-  const [summary, setSummary] = useState<any>(null);
-  const [selectedFinding, setSelectedFinding] = useState<Finding | null>(null);
-  const [filter, setFilter] = useState<string>('all');
+  const [data, setData] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [expandedRow, setExpandedRow] = useState<string | null>(null); // Track expanded row
 
-  useEffect(() => {
-    fetchScanResults();
-    
-    // Poll for updates if scan is still running
-    const interval = setInterval(() => {
-      if (status?.status === 'running') {
-        fetchScanResults();
-      }
-    }, 5000);
-
-    return () => clearInterval(interval);
-  }, [scanId, status?.status]);
-
-  async function fetchScanResults() {
+  const fetchResults = async () => {
     try {
       const res = await fetch(`/api/scans/${scanId}`);
-      const data = await res.json();
+      if (!res.ok) throw new Error('Failed to fetch results');
+      const json = await res.json();
+      setData(json);
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
 
-      setStatus(data.status);
-
-      if (data.results) {
-        setFindings(data.results.findings || []);
-        setSummary(data.results.summary);
+  useEffect(() => {
+    fetchResults();
+    // Poll every 3 seconds if running
+    const interval = setInterval(() => {
+      if (data?.status?.status === 'running' || data?.status?.status === 'pending') {
+        fetchResults();
       }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [scanId, data?.status?.status]);
 
-      setLoading(false);
-    } catch (error) {
-      console.error('Failed to fetch scan results:', error);
-      setLoading(false);
-    }
-  }
+  const toggleRow = (id: string) => {
+    setExpandedRow(expandedRow === id ? null : id);
+  };
 
-  function getSeverityColor(severity: string) {
-    switch (severity) {
-      case 'CRITICAL':
-        return 'bg-red-100 text-red-800 border-red-200';
-      case 'HIGH':
-        return 'bg-orange-100 text-orange-800 border-orange-200';
-      case 'MEDIUM':
-        return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-      case 'LOW':
-        return 'bg-blue-100 text-blue-800 border-blue-200';
-      default:
-        return 'bg-gray-100 text-gray-800 border-gray-200';
-    }
-  }
+  // 1. Loading State
+  if (!data) return (
+    <div className="flex flex-col items-center justify-center py-20">
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <p className="mt-4 text-gray-500">Initializing scan context...</p>
+    </div>
+  );
 
-  function getCategoryIcon(category: string) {
-    switch (category) {
-      case 'SAST':
-        return '🔍';
-      case 'DAST':
-        return '🌐';
-      case 'SCA':
-        return '📦';
-      case 'CONFIG':
-        return '⚙️';
-      case 'AUTH':
-        return '🔐';
-      default:
-        return '⚠️';
-    }
-  }
+  // 2. Error State
+  if (error) return (
+    <div className="p-6 bg-red-50 border border-red-200 rounded-lg text-red-700">
+      <h3 className="font-bold">Error loading results</h3>
+      <p>{error}</p>
+    </div>
+  );
 
-  const filteredFindings = findings.filter((f) => {
-    if (filter === 'all') return true;
-    if (filter === 'critical-high') return ['CRITICAL', 'HIGH'].includes(f.severity);
-    return f.category === filter;
-  });
-
-  if (loading) {
+  // 3. Scan In Progress
+  if (data.status.status === 'running' || data.status.status === 'pending') {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full"></div>
-        <span className="ml-3 text-gray-600">Loading scan results...</span>
-      </div>
-    );
-  }
-
-  if (status?.status === 'running') {
-    return (
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 text-center">
-        <div className="animate-spin w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"></div>
-        <h3 className="text-lg font-semibold text-blue-900 mb-2">Scan in Progress</h3>
-        <p className="text-blue-700">
-          Security scan is currently running. This page will update automatically.
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
+        <div className="mx-auto w-16 h-16 mb-6 relative">
+          <div className="absolute inset-0 border-4 border-blue-100 rounded-full"></div>
+          <div className="absolute inset-0 border-4 border-blue-600 rounded-full border-t-transparent animate-spin"></div>
+        </div>
+        <h2 className="text-xl font-semibold text-gray-900 mb-2">Scan in Progress</h2>
+        <p className="text-gray-500 max-w-md mx-auto">
+          DeplAI is analyzing your codebase. This usually takes 1-2 minutes depending on repository size.
         </p>
-        {status.toolsRun && status.toolsRun.length > 0 && (
-          <div className="mt-4">
-            <p className="text-sm text-blue-600 mb-2">Tools running:</p>
-            <div className="flex flex-wrap gap-2 justify-center">
-              {status.toolsRun.map((tool: string) => (
-                <span key={tool} className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
-                  {tool}
+        <div className="mt-8 flex justify-center gap-2">
+            {data.status.toolsRun?.map((tool: string) => (
+                <span key={tool} className="px-3 py-1 bg-gray-100 text-gray-600 text-xs rounded-full font-mono">
+                    {tool}
                 </span>
-              ))}
-            </div>
-          </div>
-        )}
+            ))}
+        </div>
       </div>
     );
   }
 
-  if (status?.status === 'failed') {
-    return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
-        <svg className="w-12 h-12 text-red-600 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-        <h3 className="text-lg font-semibold text-red-900 mb-2">Scan Failed</h3>
-        <p className="text-red-700">An error occurred during the security scan.</p>
-      </div>
-    );
-  }
+  // 4. Scan Completed (Findings Table)
+  const findings = data.results?.findings || [];
 
   return (
     <div className="space-y-6">
       {/* Summary Cards */}
-      {summary && (
-        <div className="grid md:grid-cols-4 gap-4">
-          <div className="bg-white border border-gray-200 rounded-lg p-4">
-            <div className="text-sm text-gray-600 mb-1">Total Findings</div>
-            <div className="text-3xl font-bold text-gray-900">{summary.total}</div>
-          </div>
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-            <div className="text-sm text-red-600 mb-1">Critical</div>
-            <div className="text-3xl font-bold text-red-900">{summary.bySeverity?.CRITICAL || 0}</div>
-          </div>
-          <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
-            <div className="text-sm text-orange-600 mb-1">High</div>
-            <div className="text-3xl font-bold text-orange-900">{summary.bySeverity?.HIGH || 0}</div>
-          </div>
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-            <div className="text-sm text-yellow-600 mb-1">Medium</div>
-            <div className="text-3xl font-bold text-yellow-900">{summary.bySeverity?.MEDIUM || 0}</div>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+          <span className="text-gray-500 text-xs font-bold uppercase">Total Issues</span>
+          <div className="text-3xl font-bold text-gray-900 mt-1">{data.status.findingsCount}</div>
+        </div>
+        <div className="bg-red-50 p-4 rounded-xl border border-red-100 shadow-sm">
+          <span className="text-red-600 text-xs font-bold uppercase">Critical & High</span>
+          <div className="text-3xl font-bold text-red-700 mt-1">
+            {(data.status.severityBreakdown?.critical || 0) + (data.status.severityBreakdown?.high || 0)}
           </div>
         </div>
-      )}
-
-      {/* Filters */}
-      <div className="bg-white border border-gray-200 rounded-lg p-4">
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => setFilter('all')}
-            className={`px-4 py-2 rounded-lg transition ${
-              filter === 'all'
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            All ({findings.length})
-          </button>
-          <button
-            onClick={() => setFilter('critical-high')}
-            className={`px-4 py-2 rounded-lg transition ${
-              filter === 'critical-high'
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            Critical & High
-          </button>
-          {Object.entries(summary?.byCategory || {}).map(([category, count]: [string, unknown]) => (
-            <button
-              key={category}
-              onClick={() => setFilter(category)}
-              className={`px-4 py-2 rounded-lg transition ${
-                filter === category
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              {getCategoryIcon(category)} {category} ({count as number})
-            </button>
-          ))}
+        <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 shadow-sm">
+          <span className="text-blue-600 text-xs font-bold uppercase">Tools Run</span>
+          <div className="mt-2 flex flex-wrap gap-1">
+             {data.status.toolsRun?.map((t: string) => (
+               <span key={t} className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded uppercase font-medium">{t}</span>
+             ))}
+          </div>
+        </div>
+        <div className="bg-green-50 p-4 rounded-xl border border-green-100 shadow-sm">
+          <span className="text-green-600 text-xs font-bold uppercase">Scan Status</span>
+          <div className="text-lg font-bold text-green-700 mt-1 flex items-center gap-2">
+            Completed
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+          </div>
         </div>
       </div>
 
-      {/* Findings List */}
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-        <div className="p-4 border-b border-gray-200">
-          <h3 className="font-semibold text-gray-900">
-            Security Findings ({filteredFindings.length})
-          </h3>
+      {/* Findings Table */}
+      <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+          <h3 className="font-semibold text-gray-900">Security Findings</h3>
+          <span className="text-xs text-gray-500">{findings.length} results found</span>
         </div>
 
-        {filteredFindings.length === 0 ? (
+        {findings.length === 0 ? (
           <div className="p-12 text-center">
-            <svg className="w-16 h-16 text-green-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <h4 className="text-lg font-semibold text-gray-900 mb-2">No Findings</h4>
-            <p className="text-gray-600">No security issues detected in this scan.</p>
+            <div className="mx-auto w-12 h-12 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-4">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+            </div>
+            <h3 className="text-lg font-medium text-gray-900">All Clear!</h3>
+            <p className="text-gray-500 mt-1">No security issues were detected in this scan.</p>
           </div>
         ) : (
-          <div className="divide-y divide-gray-200 max-h-96 overflow-y-auto">
-            {filteredFindings.map((finding) => (
-              <div
-                key={finding.id}
-                onClick={() => setSelectedFinding(finding)}
-                className="p-4 hover:bg-gray-50 cursor-pointer transition"
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className={`px-2 py-1 rounded text-xs font-medium border ${getSeverityColor(finding.severity)}`}>
-                        {finding.severity}
-                      </span>
-                      <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">
-                        {getCategoryIcon(finding.category)} {finding.category}
-                      </span>
-                      <span className="text-xs text-gray-500">{finding.tool}</span>
-                    </div>
-                    <h4 className="font-medium text-gray-900 mb-1">{finding.title}</h4>
-                    {finding.filePath && (
-                      <p className="text-sm text-gray-600">
-                        {finding.filePath}
-                        {finding.lineNumber && `:${finding.lineNumber}`}
-                      </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-gray-50 text-gray-500 border-b border-gray-200">
+                <tr>
+                  <th className="px-6 py-3 font-medium uppercase text-xs w-8"></th>
+                  <th className="px-6 py-3 font-medium uppercase text-xs">Severity</th>
+                  <th className="px-6 py-3 font-medium uppercase text-xs">Vulnerability</th>
+                  <th className="px-6 py-3 font-medium uppercase text-xs">Tool</th>
+                  <th className="px-6 py-3 font-medium uppercase text-xs">Location</th>
+                  <th className="px-6 py-3 font-medium uppercase text-xs text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {findings.map((f: any) => (
+                  <>
+                    <tr 
+                      key={f.id} 
+                      onClick={() => toggleRow(f.id)}
+                      className={`hover:bg-blue-50/50 cursor-pointer transition-colors ${expandedRow === f.id ? 'bg-blue-50/30' : ''}`}
+                    >
+                      <td className="px-6 py-4 text-gray-400">
+                        <svg 
+                          className={`w-4 h-4 transform transition-transform ${expandedRow === f.id ? 'rotate-90' : ''}`} 
+                          fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                          ${f.severity === 'CRITICAL' ? 'bg-red-100 text-red-800' :
+                            f.severity === 'HIGH' ? 'bg-orange-100 text-orange-800' :
+                            f.severity === 'MEDIUM' ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-gray-100 text-gray-800'
+                          }`}>
+                          {f.severity}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="font-medium text-gray-900">{f.title}</div>
+                        <div className="text-xs text-gray-500 mt-0.5">{f.ruleId}</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="text-gray-600 font-mono text-xs border border-gray-200 px-1.5 py-0.5 rounded bg-gray-50">
+                          {f.tool}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-gray-500 font-mono text-xs">
+                        {f.filePath}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <button className="text-blue-600 hover:text-blue-800 text-xs font-medium">
+                          {expandedRow === f.id ? 'Hide Details' : 'View Details'}
+                        </button>
+                      </td>
+                    </tr>
+                    
+                    {/* EXPANDED ROW (The Magic Part) */}
+                    {expandedRow === f.id && (
+                      <tr className="bg-gray-50/30">
+                        <td colSpan={6} className="p-0">
+                          <FindingDetails finding={f} />
+                        </td>
+                      </tr>
                     )}
-                  </div>
-                  <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </div>
-              </div>
-            ))}
+                  </>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
-
-      {/* Finding Detail Modal */}
-      {selectedFinding && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" onClick={() => setSelectedFinding(null)}>
-          <div className="bg-white rounded-lg max-w-3xl w-full max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="p-6 border-b border-gray-200">
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className={`px-3 py-1 rounded text-sm font-medium border ${getSeverityColor(selectedFinding.severity)}`}>
-                      {selectedFinding.severity}
-                    </span>
-                    <span className="px-3 py-1 bg-gray-100 text-gray-700 rounded text-sm">
-                      {getCategoryIcon(selectedFinding.category)} {selectedFinding.category}
-                    </span>
-                  </div>
-                  <h2 className="text-xl font-bold text-gray-900">{selectedFinding.title}</h2>
-                </div>
-                <button
-                  onClick={() => setSelectedFinding(null)}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-
-            <div className="p-6 space-y-4">
-              <div>
-                <h3 className="font-semibold text-gray-900 mb-2">Details</h3>
-                <dl className="grid grid-cols-2 gap-3">
-                  <div>
-                    <dt className="text-sm text-gray-600">Tool</dt>
-                    <dd className="text-sm font-medium text-gray-900">{selectedFinding.tool}</dd>
-                  </div>
-                  {selectedFinding.ruleId && (
-                    <div>
-                      <dt className="text-sm text-gray-600">Rule ID</dt>
-                      <dd className="text-sm font-medium text-gray-900">{selectedFinding.ruleId}</dd>
-                    </div>
-                  )}
-                  <div>
-                    <dt className="text-sm text-gray-600">Confidence</dt>
-                    <dd className="text-sm font-medium text-gray-900">{selectedFinding.confidence}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-sm text-gray-600">Status</dt>
-                    <dd className="text-sm font-medium text-gray-900">{selectedFinding.status}</dd>
-                  </div>
-                </dl>
-              </div>
-
-              {selectedFinding.filePath && (
-                <div>
-                  <h3 className="font-semibold text-gray-900 mb-2">Location</h3>
-                  <p className="text-sm text-gray-900 bg-gray-50 p-3 rounded font-mono">
-                    {selectedFinding.filePath}
-                    {selectedFinding.lineNumber && `:${selectedFinding.lineNumber}`}
-                  </p>
-                </div>
-              )}
-
-              {selectedFinding.evidence && Object.keys(selectedFinding.evidence).length > 0 && (
-                <div>
-                  <h3 className="font-semibold text-gray-900 mb-2">Evidence</h3>
-                  <pre className="text-xs bg-gray-50 p-4 rounded overflow-x-auto">
-                    {JSON.stringify(selectedFinding.evidence, null, 2)}
-                  </pre>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

@@ -55,15 +55,18 @@ export async function GET(
       );
     }
 
-    // 4. If completed, include findings
-    let response: any = { status };
+    // 4. Construct response
+    // IMPORTANT: The frontend expects { status: {...}, results: {...} }
+    const response: any = { status };
 
+    // 5. If completed, fetch and attach findings
     if (status.status === 'completed') {
       const results = await scannerService.getScanFindings(scanId);
       response.results = results;
     }
 
     return NextResponse.json(response);
+
   } catch (error: any) {
     console.error('Get scan error:', error);
     return NextResponse.json(
