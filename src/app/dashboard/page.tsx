@@ -2,8 +2,118 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import CloudBoltIcon from '@/components/CloudBoltIcon'; // Ensure this path is correct
-import ExitIcon from '@/components/ExitIcon';           // Ensure this path is correct
+import Link from 'next/link';
+import { 
+  Fingerprint, 
+  LogOut, 
+  Upload, 
+  RefreshCw, 
+  Shield, 
+  AlertTriangle, 
+  CheckCircle2, 
+  Github, 
+  FileCode, 
+  Lock, 
+  Globe,
+  LayoutGrid,
+  List as ListIcon,
+  Search,
+  Plus,
+  Settings,
+  Activity,
+  Terminal,
+  MoreVertical,
+  Zap,
+  Globe2,
+  MessageSquare,
+  Ticket,
+  Trash2
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+
+// --- Background Effect Component ---
+const BackgroundCanvas = () => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    let width = canvas.width = window.innerWidth;
+    let height = canvas.height = window.innerHeight;
+    
+    // Particles config
+    const particles: {x: number, y: number, vx: number, vy: number, size: number, alpha: number}[] = [];
+    const particleCount = 40;
+    
+    for (let i = 0; i < particleCount; i++) {
+      particles.push({
+        x: Math.random() * width,
+        y: Math.random() * height,
+        vx: (Math.random() - 0.5) * 0.3,
+        vy: (Math.random() - 0.5) * 0.3,
+        size: Math.random() * 2,
+        alpha: Math.random() * 0.3 + 0.1
+      });
+    }
+
+    const animate = () => {
+      ctx.clearRect(0, 0, width, height);
+      
+      // Draw connections
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.05)'; // very faint blue
+      ctx.lineWidth = 1;
+      
+      for (let i = 0; i < particles.length; i++) {
+        const p = particles[i];
+        
+        // Move
+        p.x += p.vx;
+        p.y += p.vy;
+        
+        // Bounce off edges
+        if (p.x < 0 || p.x > width) p.vx *= -1;
+        if (p.y < 0 || p.y > height) p.vy *= -1;
+
+        // Draw particle
+        ctx.fillStyle = `rgba(56, 189, 248, ${p.alpha})`; 
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Connect near particles
+        for (let j = i + 1; j < particles.length; j++) {
+          const p2 = particles[j];
+          const dx = p.x - p2.x;
+          const dy = p.y - p2.y;
+          const dist = Math.sqrt(dx*dx + dy*dy);
+          
+          if (dist < 200) {
+            ctx.beginPath();
+            ctx.moveTo(p.x, p.y);
+            ctx.lineTo(p2.x, p2.y);
+            ctx.stroke();
+          }
+        }
+      }
+      requestAnimationFrame(animate);
+    };
+
+    const handleResize = () => {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    };
+
+    window.addEventListener('resize', handleResize);
+    animate();
+
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  return <canvas ref={canvasRef} className="fixed inset-0 z-0 pointer-events-none opacity-40" />;
+};
 
 export default function Dashboard() {
   const router = useRouter();
@@ -14,10 +124,21 @@ export default function Dashboard() {
   const [installations, setInstallations] = useState<any[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
   const [stats, setStats] = useState({ localCount: 0, githubCount: 0, totalCount: 0 });
+  const [securityMetrics, setSecurityMetrics] = useState({
+    healthScore: 0,
+    criticalCount: 0,
+    highCount: 0,
+    mediumCount: 0,
+    lowCount: 0,
+    totalVulnerabilities: 0,
+    scannedProjects: 0
+  });
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [refreshingInstallations, setRefreshingInstallations] = useState(false);
   const [scanningProjects, setScanningProjects] = useState<Set<string>>(new Set());
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
+  const [searchQuery, setSearchQuery] = useState('');
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -39,578 +160,546 @@ export default function Dashboard() {
       
       setUser(session.user);
       setAuthLoading(false);
-      
-      // Setup installations first (links any unlinked ones)
       await setupInstallations();
-      
-      // Then fetch data
       fetchInstallations();
       fetchProjects();
+      fetchSecurityMetrics(); // NEW: Fetch security metrics
     } catch (error) {
       console.error('Auth check failed:', error);
       router.push('/');
     }
   }
 
-  // -- Data Fetching Functions --
-
+  // -- Data Fetching --
   async function setupInstallations() {
-    try {
-      // Fix: Changed endpoint from /api/installations/setup to /api/installations
-      await fetch('/api/installations', { method: 'POST' });
-    } catch (error) {
-      console.error('Setup installations failed:', error);
-    }
+    try { await fetch('/api/installations/setup', { method: 'POST' }); } catch (e) { console.error(e); }
   }
 
   async function fetchInstallations() {
-    const res = await fetch('/api/installations');
-    const data = await res.json();
-    setInstallations(data.installations || []);
+    try {
+      const res = await fetch('/api/installations');
+      const data = await res.json();
+      setInstallations(data.installations || []);
+    } catch (e) { console.error(e); }
   }
 
   async function fetchProjects() {
     setLoading(true);
-    const res = await fetch('/api/projects');
-    const data = await res.json();
-    setProjects(data.projects || []);
-    setStats(data.stats || { localCount: 0, githubCount: 0, totalCount: 0 });
-    setLoading(false);
+    try {
+      const res = await fetch('/api/projects');
+      const data = await res.json();
+      setProjects(data.projects || []);
+      setStats(data.stats || { localCount: 0, githubCount: 0, totalCount: 0 });
+    } catch (e) { console.error(e); } 
+    finally { setLoading(false); }
+  }
+
+  // NEW: Fetch security metrics from scans
+  async function fetchSecurityMetrics() {
+    try {
+      const res = await fetch('/api/security/metrics');
+      const data = await res.json();
+      
+      if (data.success) {
+        setSecurityMetrics(data.metrics);
+      }
+    } catch (e) { 
+      console.error('Failed to fetch security metrics:', e);
+    }
   }
 
   async function handleRefreshInstallations() {
     setRefreshingInstallations(true);
     try {
-      // Fix: Changed endpoint from /api/installations/setup to /api/installations
-      await fetch('/api/installations', { method: 'POST' });
+      await fetch('/api/installations/setup', { method: 'POST' });
       await fetchInstallations();
       await fetchProjects();
-    } catch (error) {
-      console.error('Refresh failed:', error);
-      alert('Failed to refresh installations');
-    } finally {
-      setRefreshingInstallations(false);
-    }
+      await fetchSecurityMetrics(); // NEW: Refresh security metrics too
+    } catch (e) { alert('Failed to refresh'); } 
+    finally { setRefreshingInstallations(false); }
   }
 
-  // -- Action Handlers --
-
+  // -- Actions --
   async function handleFileUpload(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
-    if (!file) return;
-
-    if (!file.name.endsWith('.zip')) {
-      alert('Please upload a .zip file');
-      return;
-    }
-
+    if (!file || !file.name.endsWith('.zip')) return alert('Please upload a .zip file');
+    
     const projectName = prompt('Enter project name:');
-    if (!projectName || projectName.trim().length === 0) {
-      return;
-    }
+    if (!projectName?.trim()) return;
 
     setUploading(true);
-
     try {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('name', projectName.trim());
+      const res = await fetch('/api/projects/upload', { method: 'POST', body: formData });
+      if (res.ok) { fetchProjects(); } else { const d = await res.json(); alert(d.error); }
+    } catch (e) { alert('Upload failed'); } 
+    finally { setUploading(false); if (fileInputRef.current) fileInputRef.current.value = ''; }
+  }
 
-      const response = await fetch('/api/projects/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        alert('Project uploaded successfully!');
+  async function handleDeleteProject(id: string, name: string) {
+    if (!confirm(`Delete "${name}"?`)) return;
+    try {
+      const res = await fetch(`/api/projects/${id}`, { method: 'DELETE' });
+      if (res.ok) {
         fetchProjects();
-      } else {
-        alert(`Error: ${data.error}`);
+        fetchSecurityMetrics(); // NEW: Update metrics after deletion
       }
-    } catch (error) {
-      console.error('Upload error:', error);
-      alert('Failed to upload project');
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
+    } catch (e) { alert('Delete failed'); }
+  }
+
+  async function handleTriggerScan(id: string, name: string, type: 'full' | 'dast' = 'full') {
+    if (scanningProjects.has(id)) return;
+    
+    let targetUrl;
+    if (type === 'dast') {
+      targetUrl = prompt(`Enter target URL for DAST scan of "${name}":\n(e.g., https://staging.example.com)`);
+      if (!targetUrl) return;
+    } else {
+      if (!confirm(`Start SAST security scan for "${name}"?`)) return;
+    }
+
+    setScanningProjects(prev => new Set(prev).add(id));
+    try {
+      const res = await fetch('/api/scans/trigger', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: id, scanType: 'full', targetUrl }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        router.push(`/dashboard/scans/${data.scanId}`);
+      } else { throw new Error(data.error); }
+    } catch (e: any) {
+      alert(e.message);
+      setScanningProjects(prev => { const n = new Set(prev); n.delete(id); return n; });
     }
   }
 
-  async function handleDeleteProject(projectId: string, projectName: string) {
-    const confirmed = confirm(`Delete "${projectName}"? This cannot be undone.`);
-    if (!confirmed) return;
+  async function handleRaiseTicket(id: string, name: string) {
+    const issue = prompt(`Raise Slack ticket for "${name}"?\n\nDescribe the issue or vulnerability to report:`);
+    if (!issue || !issue.trim()) return;
 
-    try {
-      const response = await fetch(`/api/projects/${projectId}`, {
-        method: 'DELETE',
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        alert('Project deleted successfully');
-        fetchProjects();
-      } else {
-        alert(`Error: ${data.error}`);
-      }
-    } catch (error) {
-      console.error('Delete error:', error);
-      alert('Failed to delete project');
-    }
+    // Simulate API call to Slack integration
+    const mockTicketId = `INC-${Math.floor(Math.random() * 10000)}`;
+    const mockChannel = "#security-alerts";
+    
+    alert(`✅ Ticket Created Successfully!\n\nTicket ID: ${mockTicketId}\nChannel: ${mockChannel}\nStatus: Triage Pending`);
   }
 
   function handleProjectClick(project: any) {
-    if (project.type === 'local') {
-      router.push(`/dashboard/repo?project_id=${project.id}&type=local`);
-    } else {
-      router.push(`/dashboard/repo?owner=${project.owner}&repo=${project.repo}&type=github`);
-    }
+    const url = project.type === 'local' 
+      ? `/dashboard/repo?project_id=${project.id}&type=local`
+      : `/dashboard/repo?owner=${project.owner}&repo=${project.repo}&type=github`;
+    router.push(url);
   }
 
-  async function handleLogout() {
-    await fetch('/api/auth/logout', { method: 'POST' });
-    router.push('/');
-  }
+  // -- Filtering --
+  const filteredProjects = projects.filter(p => 
+    p.name?.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    p.repo?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
-  async function handleTriggerScan(projectId: string, projectName: string) {
-    // Prevent duplicate scans
-    if (scanningProjects.has(projectId)) {
-      alert('Scan already in progress for this project');
-      return;
-    }
+  // NEW: Calculate health score color and status
+  const getHealthScoreColor = (score: number) => {
+    if (score >= 90) return { color: 'emerald', text: 'Excellent', shadow: 'emerald-500' };
+    if (score >= 75) return { color: 'blue', text: 'Good', shadow: 'blue-500' };
+    if (score >= 60) return { color: 'yellow', text: 'Fair', shadow: 'yellow-500' };
+    if (score >= 40) return { color: 'orange', text: 'Poor', shadow: 'orange-500' };
+    return { color: 'red', text: 'Critical', shadow: 'red-500' };
+  };
 
-    // Confirm with user
-    const confirmed = confirm(`Start security scan for "${projectName}"?`);
-    if (!confirmed) return;
+  const healthStatus = getHealthScoreColor(securityMetrics.healthScore);
 
-    // Mark as scanning
-    setScanningProjects(prev => new Set(prev).add(projectId));
+  if (authLoading) return <div className="min-h-screen bg-[#020617] flex items-center justify-center"><div className="animate-spin w-8 h-8 border-2 border-blue-500 rounded-full border-t-transparent"/></div>;
 
-    try {
-      // Call the scan API
-      const response = await fetch('/api/scans/trigger', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          projectId,
-          scanType: 'full',
-        }),
-      });
-
-      const data = await response.json();
-
-      if (response.ok && data.success) {
-        alert(`Security scan started!\nScan ID: ${data.scanId}`);
-        // Navigate to results page
-        router.push(`/dashboard/scans/${data.scanId}`);
-      } else {
-        throw new Error(data.error || 'Failed to start scan');
-      }
-    } catch (error: any) {
-      console.error('Scan failed:', error);
-      alert(`Failed to start scan: ${error.message}`);
-      
-      // Remove from scanning set on error
-      setScanningProjects(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(projectId);
-        return newSet;
-      });
-    }
-  }
-
-  // DAST scan with custom URL
-  async function handleTriggerDASTScan(projectId: string, projectName: string) {
-    const targetUrl = prompt(
-      `Enter target URL for DAST scan of "${projectName}":\n\nExample: https://example.com`
-    );
-
-    if (!targetUrl) return;
-
-    // Validate URL format
-    try {
-      new URL(targetUrl);
-    } catch {
-      alert('Invalid URL format');
-      return;
-    }
-
-    setScanningProjects(prev => new Set(prev).add(projectId));
-
-    try {
-      const response = await fetch('/api/scans/trigger', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          projectId,
-          scanType: 'full',
-          targetUrl, // Add target URL for DAST
-        }),
-      });
-
-      const data = await response.json();
-
-      if (response.ok && data.success) {
-        alert(`Security scan started!\nScan ID: ${data.scanId}`);
-        router.push(`/dashboard/scans/${data.scanId}`);
-      } else {
-        throw new Error(data.error || 'Failed to start scan');
-      }
-    } catch (error: any) {
-      console.error('Scan failed:', error);
-      alert(`Failed to start scan: ${error.message}`);
-      
-      setScanningProjects(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(projectId);
-        return newSet;
-      });
-    }
-  }
-
-  // -- Loading State --
-  if (authLoading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // -- Main JSX --
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="container mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="text-blue-600">
-                <CloudBoltIcon />
-              </div>
-              <span className="text-xl font-bold text-gray-900">Dashboard</span>
+    <div className="flex h-screen bg-[#020617] text-slate-200 overflow-hidden font-sans selection:bg-blue-500/30 relative">
+      
+      {/* Animated Background Canvas */}
+      <BackgroundCanvas />
+
+      {/* --- SIDEBAR --- */}
+      <aside className="w-16 lg:w-64 border-r border-white/5 bg-[#0B1120]/80 backdrop-blur-md flex flex-col justify-between transition-all duration-300 z-20">
+        <div>
+          <div className="h-16 flex items-center justify-center lg:justify-start lg:px-6 border-b border-white/5">
+            <div className="p-1.5 bg-blue-600/20 rounded-lg border border-blue-500/30 text-blue-400">
+              <Fingerprint className="w-5 h-5" />
             </div>
-            
-            <button
-              onClick={handleLogout}
-              className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition"
-              title="Logout"
-            >
-              <ExitIcon />
+            <span className="ml-3 font-bold text-white tracking-wide hidden lg:block">DeplAI</span>
+          </div>
+
+          <nav className="p-4 space-y-2">
+            <NavItem href="/dashboard" icon={<LayoutGrid size={20} />} label="Overview" active />
+            <NavItem href="/dashboard/scans" icon={<Activity size={20} />} label="Scans" />
+            <NavItem href="/dashboard/settings" icon={<Settings size={20} />} label="Settings" />
+          </nav>
+        </div>
+
+        <div className="p-4 border-t border-white/5">
+          <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer group">
+            <img 
+              src={user?.avatarUrl} 
+              alt="User" 
+              className="w-8 h-8 rounded-full border border-white/10"
+            />
+            <div className="hidden lg:block overflow-hidden">
+              <p className="text-sm font-medium text-white truncate">{user?.login || 'User'}</p>
+              <button onClick={() => fetch('/api/auth/logout', { method: 'POST' }).then(() => router.push('/'))} className="text-xs text-slate-500 hover:text-red-400 transition-colors flex items-center gap-1">
+                <LogOut size={10} /> Sign out
+              </button>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      {/* --- MAIN CONTENT --- */}
+      <main className="flex-1 flex flex-col relative overflow-hidden z-10">
+        {/* Top Gradient */}
+        <div className="absolute top-0 left-0 w-full h-96 bg-gradient-to-b from-blue-900/10 to-transparent pointer-events-none" />
+
+        {/* Header Area */}
+        <header className="h-16 border-b border-white/5 bg-[#020617]/50 backdrop-blur-md flex items-center justify-between px-8 z-10 sticky top-0">
+          <div className="flex items-center text-sm breadcrumbs text-slate-500">
+            <span className="hover:text-slate-300 cursor-pointer transition-colors">Dashboard</span>
+            <span className="mx-2">/</span>
+            <span className="text-slate-200 font-medium">Overview</span>
+          </div>
+          
+          <div className="flex items-center gap-4">
+            {/* Always visible Connect GitHub Button */}
+            <a 
+               href="https://github.com/apps/deplai-gitapp-aj/installations/new"
+               target="_blank"
+               className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-full border border-slate-700 transition-colors flex items-center gap-2 group"
+             >
+               <Github size={12} className="group-hover:text-white transition-colors" /> 
+               <span className="group-hover:text-white transition-colors">
+                 {installations.length === 0 ? 'Connect GitHub' : 'Add Organization'}
+               </span>
+            </a>
+
+            <div className="h-4 w-px bg-slate-800" />
+            <button onClick={handleRefreshInstallations} disabled={refreshingInstallations} className="text-slate-400 hover:text-white transition-colors">
+              <RefreshCw size={16} className={refreshingInstallations ? 'animate-spin' : ''} />
             </button>
           </div>
-        </div>
-      </header>
+        </header>
 
-      <div className="container mx-auto px-6 py-8">
-        {/* Stats Cards */}
-        <div className="grid md:grid-cols-2 gap-6 mb-8">
-          <div className="bg-white rounded-xl p-6 border border-gray-200">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-gray-600">Scans</span>
-              <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
-                <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-            </div>
-            <div className="text-3xl font-bold text-gray-900">0</div>
-            <p className="text-xs text-gray-500 mt-1">Security scans completed</p>
-          </div>
-
-          <div className="bg-white rounded-xl p-6 border border-gray-200">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-gray-600">Findings</span>
-              <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center">
-                <svg className="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-              </div>
-            </div>
-            <div className="text-3xl font-bold text-gray-900">0</div>
-            <p className="text-xs text-gray-500 mt-1">Issues detected</p>
-          </div>
-        </div>
-
-        <div className="grid lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-1 space-y-6">
-            {/* Upload Project Section */}
-            <div className="bg-white rounded-xl border border-gray-200">
-              <div className="p-6 border-b border-gray-200">
-                <h2 className="text-lg font-semibold text-gray-900">Upload Project</h2>
-              </div>
-              
-              <div className="p-4">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".zip"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                  disabled={uploading}
-                />
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploading}
-                  className="w-full bg-blue-600 text-white px-4 py-3 rounded-lg hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
-                >
-                  {uploading ? (
-                    <>
-                      <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full"></div>
-                      <span>Uploading...</span>
-                    </>
-                  ) : (
-                    <>
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                      </svg>
-                      <span>Upload Local Project</span>
-                    </>
-                  )}
-                </button>
-                <p className="text-xs text-gray-500 mt-2 text-center">
-                  Upload a .zip file (max 10GB)
-                </p>
-              </div>
-            </div>
-
-            {/* GitHub Installations */}
-            <div className="bg-white rounded-xl border border-gray-200">
-              <div className="p-6 border-b border-gray-200">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-lg font-semibold text-gray-900">GitHub Accounts</h2>
-                  {installations.length > 0 && (
-                    <button
-                      onClick={handleRefreshInstallations}
-                      disabled={refreshingInstallations}
-                      className="text-sm text-blue-600 hover:text-blue-700 disabled:opacity-50 flex items-center space-x-1"
-                    >
-                      <svg
-                        className={`w-4 h-4 ${refreshingInstallations ? 'animate-spin' : ''}`}
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                        />
-                      </svg>
-                      <span>{refreshingInstallations ? 'Refreshing...' : 'Refresh'}</span>
-                    </button>
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto p-8 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent">
+          <div className="max-w-7xl mx-auto space-y-8">
+            
+            {/* Bento Stats Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Stat 1: Total Projects */}
+              <div className="p-5 rounded-2xl bg-[#0F172A]/80 border border-white/5 relative group overflow-hidden backdrop-blur-sm">
+                <div className="absolute right-0 top-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                  <Terminal size={48} />
+                </div>
+                <p className="text-slate-400 text-xs font-medium uppercase tracking-wider">Total Projects</p>
+                <div className="mt-2 flex items-baseline gap-2">
+                  <span className="text-3xl font-bold text-white">{stats.totalCount}</span>
+                  {securityMetrics.scannedProjects > 0 && (
+                    <span className="text-xs text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded">
+                      {securityMetrics.scannedProjects} scanned
+                    </span>
                   )}
                 </div>
               </div>
-              
-              <div className="p-4">
-                {installations.length === 0 ? (
-                  <div className="text-center py-12">
-                    <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                      </svg>
-                    </div>
-                    <p className="text-gray-600 font-medium mb-2">No installations yet</p>
-                    <p className="text-sm text-gray-500 mb-4">Install the GitHub App to get started</p>
-                    <a 
-                      href="https://github.com/apps/deplai-gitapp-aj/installations/new"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-block bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 transition"
-                    >
-                      Install GitHub App
-                    </a>
-                    <p className="text-xs text-blue-600 mt-3">
-                      After installation, this page will refresh automatically
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {installations.map((inst) => (
-                      <div
-                        key={inst.id}
-                        className="p-4 rounded-lg bg-gray-50 border-2 border-transparent"
-                      >
-                        <div className="flex items-center space-x-3">
-                          <img 
-                            src={user?.avatarUrl || `https://github.com/${inst.account_login}.png`}
-                            alt={inst.account_login}
-                            className="w-10 h-10 rounded-full"
-                          />
-                          <div className="flex-1">
-                            <h3 className="font-semibold text-gray-900">{inst.account_login}</h3>
-                            <p className="text-xs text-gray-500">{inst.account_type}</p>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
 
-          {/* Projects Main Panel */}
-          <div className="lg:col-span-2">
-            <div className="bg-white rounded-xl border border-gray-200">
-              <div className="p-6 border-b border-gray-200">
-                <div className="flex items-center justify-between">
+              {/* Stat 2: Security Score - NOW FUNCTIONAL */}
+              <div className="p-5 rounded-2xl bg-[#0F172A]/80 border border-white/5 relative overflow-hidden backdrop-blur-sm">
+                <div className="flex justify-between items-start">
                   <div>
-                    <h2 className="text-lg font-semibold text-gray-900">All Projects</h2>
-                    <p className="text-sm text-gray-500 mt-1">
-                      {loading ? 'Loading...' : `${stats.totalCount} projects available`}
-                    </p>
+                    <p className="text-slate-400 text-xs font-medium uppercase tracking-wider">Security Health</p>
+                    <div className="mt-2 flex items-baseline gap-2">
+                      <span className="text-3xl font-bold text-white">{securityMetrics.healthScore}%</span>
+                      <span className={`text-xs text-${healthStatus.color}-400 font-medium`}>
+                        {healthStatus.text}
+                      </span>
+                    </div>
+                  </div>
+                  <div className={`h-10 w-10 rounded-full border-2 border-${healthStatus.color}-500 flex items-center justify-center shadow-[0_0_15px_rgba(16,185,129,0.3)]`}>
+                    <Shield size={18} className={`text-${healthStatus.color}-500`} />
+                  </div>
+                </div>
+                <div className="w-full bg-slate-800 h-1 mt-4 rounded-full overflow-hidden">
+                  <div 
+                    className={`bg-${healthStatus.color}-500 h-full shadow-[0_0_10px_${healthStatus.shadow}] transition-all duration-500`}
+                    style={{ width: `${securityMetrics.healthScore}%` }}
+                  />
+                </div>
+                {securityMetrics.scannedProjects === 0 && (
+                  <p className="text-xs text-slate-500 mt-2">Run scans to calculate security score</p>
+                )}
+              </div>
+
+              {/* Stat 3: Vulnerabilities - NOW FUNCTIONAL */}
+              <div className="p-5 rounded-2xl bg-[#0F172A]/80 border border-white/5 relative backdrop-blur-sm">
+                <p className="text-slate-400 text-xs font-medium uppercase tracking-wider">Active Findings</p>
+                {securityMetrics.totalVulnerabilities > 0 ? (
+                  <div className="mt-4 flex gap-2">
+                    <div className="flex-1 bg-red-500/10 border border-red-500/20 rounded-lg p-2 text-center">
+                      <div className="text-lg font-bold text-red-400">{securityMetrics.criticalCount}</div>
+                      <div className="text-[10px] text-red-300/70 uppercase">Crit</div>
+                    </div>
+                    <div className="flex-1 bg-orange-500/10 border border-orange-500/20 rounded-lg p-2 text-center">
+                      <div className="text-lg font-bold text-orange-400">{securityMetrics.highCount}</div>
+                      <div className="text-[10px] text-orange-300/70 uppercase">High</div>
+                    </div>
+                    <div className="flex-1 bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-2 text-center">
+                      <div className="text-lg font-bold text-yellow-400">{securityMetrics.mediumCount}</div>
+                      <div className="text-[10px] text-yellow-300/70 uppercase">Med</div>
+                    </div>
+                    <div className="flex-1 bg-blue-500/10 border border-blue-500/20 rounded-lg p-2 text-center">
+                      <div className="text-lg font-bold text-blue-400">{securityMetrics.lowCount}</div>
+                      <div className="text-[10px] text-blue-300/70 uppercase">Low</div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-4 flex flex-col items-center justify-center py-6">
+                    <CheckCircle2 className="text-emerald-500 w-8 h-8 mb-2" />
+                    <p className="text-sm text-slate-400">No vulnerabilities found</p>
+                    <p className="text-xs text-slate-600 mt-1">Run scans to analyze projects</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Quick Action: Upload */}
+              <div 
+                onClick={() => fileInputRef.current?.click()}
+                className="p-5 rounded-2xl bg-blue-600 hover:bg-blue-500 cursor-pointer transition-all shadow-lg shadow-blue-900/20 flex flex-col justify-center items-center group relative overflow-hidden border border-blue-400/20"
+              >
+                <input ref={fileInputRef} type="file" accept=".zip" onChange={handleFileUpload} className="hidden" disabled={uploading} />
+                <div className="absolute inset-0 bg-gradient-to-tr from-blue-700 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                {uploading ? (
+                  <RefreshCw className="animate-spin text-white w-8 h-8" />
+                ) : (
+                  <>
+                    <div className="p-3 bg-white/10 rounded-full mb-3 group-hover:scale-110 transition-transform">
+                      <Upload className="text-white w-6 h-6" />
+                    </div>
+                    <span className="font-semibold text-white">Upload Project</span>
+                    <span className="text-xs text-blue-200 mt-1">.zip files supported</span>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Projects Section */}
+            <div className="space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                  Projects <span className="text-sm font-normal text-slate-500 ml-2 bg-slate-800/50 px-2 py-0.5 rounded-full border border-slate-700">{projects.length}</span>
+                </h2>
+                
+                <div className="flex items-center gap-3">
+                  <div className="relative group">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4 group-focus-within:text-blue-400 transition-colors" />
+                    <input 
+                      type="text" 
+                      placeholder="Filter projects..." 
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="bg-[#0F172A]/80 border border-white/10 rounded-lg pl-9 pr-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 w-64 transition-all"
+                    />
+                  </div>
+                  <div className="bg-[#0F172A]/80 border border-white/10 rounded-lg p-1 flex">
+                    <button 
+                      onClick={() => setViewMode('list')}
+                      className={`p-1.5 rounded-md transition-all ${viewMode === 'list' ? 'bg-slate-700 text-white' : 'text-slate-500 hover:text-slate-300'}`}
+                    >
+                      <ListIcon size={16} />
+                    </button>
+                    <button 
+                      onClick={() => setViewMode('grid')}
+                      className={`p-1.5 rounded-md transition-all ${viewMode === 'grid' ? 'bg-slate-700 text-white' : 'text-slate-500 hover:text-slate-300'}`}
+                    >
+                      <LayoutGrid size={16} />
+                    </button>
                   </div>
                 </div>
               </div>
 
-              <div className="p-6 max-h-[500px] overflow-y-auto">
-                {loading ? (
-                  <div className="text-center py-12">
-                    <div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto"></div>
-                    <p className="text-gray-500 mt-4">Loading projects...</p>
-                  </div>
-                ) : projects.length === 0 ? (
-                  <div className="text-center py-12">
-                    <p className="text-gray-600 font-medium mb-2">No projects yet</p>
-                    <p className="text-sm text-gray-500">Upload a local project or install the GitHub App</p>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {projects.map((project) => (
-                      <div 
-                        key={project.id} 
-                        className="border border-gray-200 rounded-lg p-5 hover:border-blue-300 hover:shadow-md transition cursor-pointer"
-                        onClick={() => handleProjectClick(project)}
-                      >
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="flex items-center space-x-3">
-                            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                              project.type === 'local' ? 'bg-purple-100' : 'bg-blue-100'
-                            }`}>
-                              <svg className={`w-5 h-5 ${
-                                project.type === 'local' ? 'text-purple-600' : 'text-blue-600'
-                              }`} fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
-                              </svg>
-                            </div>
-                            <div>
-                              <h3 className="font-semibold text-gray-900">
-                                {project.type === 'local' ? project.name : project.repo}
-                              </h3>
-                              <div className="flex items-center space-x-3 mt-1">
-                                {project.type === 'local' ? (
-                                  <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
-                                    Local
-                                  </span>
-                                ) : (
-                                  <>
-                                    <span className={`text-xs px-2 py-0.5 rounded-full ${
-                                      project.access === 'Private'
-                                        ? 'bg-orange-100 text-orange-700'
-                                        : 'bg-green-100 text-green-700'
-                                    }`}>
-                                      {project.access}
-                                    </span>
-                                    {project.branch && (
-                                      <span className="text-xs text-gray-500">
-                                        {project.branch}
-                                      </span>
-                                    )}
-                                  </>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                          
-                          <div className="flex items-center space-x-2">
-                            {project.canDelete && (
-                              <button 
-                                className="text-sm text-red-600 hover:text-red-700 font-medium px-3 py-1 hover:bg-red-50 rounded-lg transition"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDeleteProject(project.id, project.name);
-                                }}
-                              >
-                                Delete
-                              </button>
-                            )}
-                            
-                            <button 
-                                className={`text-sm font-medium px-4 py-2 rounded-lg transition ${
-                                  scanningProjects.has(project.id)
-                                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                    : 'text-white bg-blue-600 hover:bg-blue-700'
-                                }`}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleTriggerScan(project.id, project.name);
-                                }}
-                                disabled={scanningProjects.has(project.id)}
-                            >
-                              {scanningProjects.has(project.id) ? (
-                                <span className="flex items-center space-x-2">
-                                  <div className="animate-spin w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full"></div>
-                                  <span>Scanning...</span>
-                                </span>
-                              ) : (
-                                'Scan Now'
-                              )}
-                            </button>
-
-                            {/* DAST scan button */}
-                            <button 
-                                className="text-sm text-blue-600 hover:text-blue-700 font-medium px-3 py-1 hover:bg-blue-50 rounded-lg transition"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleTriggerDASTScan(project.id, project.name);
-                                }}
-                                title="Scan with custom target URL"
-                            >
-                              DAST
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Languages for GitHub repos only */}
-                        {project.type === 'github' && project.languages && Object.keys(project.languages).length > 0 && (
-                          <div className="flex flex-wrap gap-2 mt-3">
-                            {Object.keys(project.languages).slice(0, 5).map((lang) => (
-                              <span
-                                key={lang}
-                                className="text-xs bg-gray-100 text-gray-700 px-3 py-1 rounded-full"
-                              >
-                                {lang}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-
-                        {/* Last scan status */}
-                        <div className="mt-4 pt-4 border-t border-gray-100">
-                          <div className="flex items-center justify-between text-sm">
-                            <span className="text-gray-500">Last scan:</span>
-                            <span className="text-gray-400">Never</span>
-                          </div>
-                        </div>
+              {/* Projects List/Grid */}
+              <div className={`
+                ${viewMode === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4' : 'flex flex-col gap-2'}
+              `}>
+                <AnimatePresence>
+                  {loading ? (
+                    [...Array(3)].map((_, i) => (
+                      <div key={i} className="h-20 bg-[#0F172A]/50 rounded-xl animate-pulse border border-white/5" />
+                    ))
+                  ) : filteredProjects.length === 0 ? (
+                    <div className="col-span-full py-20 text-center border border-dashed border-slate-800 rounded-xl bg-[#0F172A]/50 backdrop-blur-sm">
+                      <div className="w-16 h-16 bg-slate-800/50 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <FileCode className="text-slate-500" />
                       </div>
-                    ))}
-                  </div>
-                )}
+                      <p className="text-slate-400 font-medium">No projects found</p>
+                      <p className="text-sm text-slate-600 mt-1">Try adjusting filters or upload a new project</p>
+                    </div>
+                  ) : (
+                    filteredProjects.map((project) => (
+                      <ProjectCard 
+                        key={project.id} 
+                        project={project} 
+                        viewMode={viewMode}
+                        isScanning={scanningProjects.has(project.id)}
+                        onScan={() => handleTriggerScan(project.id, project.name, 'full')}
+                        onDast={() => handleTriggerScan(project.id, project.name, 'dast')}
+                        onTicket={() => handleRaiseTicket(project.id, project.name)}
+                        onDelete={() => handleDeleteProject(project.id, project.name)}
+                        onClick={() => handleProjectClick(project)}
+                      />
+                    ))
+                  )}
+                </AnimatePresence>
               </div>
             </div>
+
           </div>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+// --- Sub Components ---
+
+const NavItem = ({ icon, label, active = false, href }: { icon: React.ReactNode, label: string, active?: boolean, href: string }) => (
+  <Link href={href}>
+    <div className={`
+      flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all duration-200 group
+      ${active ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}
+    `}>
+      {icon}
+      <span className="font-medium text-sm hidden lg:block">{label}</span>
+      {active && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-400 shadow-[0_0_8px_#3B82F6] hidden lg:block" />}
+    </div>
+  </Link>
+);
+
+const ProjectCard = ({ project, viewMode, isScanning, onScan, onDast, onTicket, onDelete, onClick }: any) => {
+  const isList = viewMode === 'list';
+  
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.95 }}
+      onClick={onClick}
+      className={`
+        group relative bg-[#0F172A]/80 border border-white/5 hover:border-blue-500/30 transition-all cursor-pointer overflow-hidden backdrop-blur-sm
+        ${isList ? 'rounded-lg p-3 flex items-center gap-6 hover:bg-[#131C33]/90' : 'rounded-2xl p-6 flex flex-col gap-4 hover:-translate-y-1 hover:shadow-xl hover:shadow-blue-900/10'}
+      `}
+    >
+      {/* Active Scan Progress Bar (if scanning) */}
+      {isScanning && (
+        <div className="absolute bottom-0 left-0 h-0.5 bg-blue-500 w-full animate-progress-indeterminate" />
+      )}
+
+      {/* Icon */}
+      <div className={`
+        flex items-center justify-center rounded-lg border shrink-0
+        ${project.type === 'local' ? 'bg-purple-500/10 border-purple-500/20 text-purple-400' : 'bg-white/5 border-white/10 text-slate-300'}
+        ${isList ? 'w-10 h-10' : 'w-12 h-12'}
+      `}>
+        {project.type === 'local' ? <FileCode size={isList ? 20 : 24} /> : <Github size={isList ? 20 : 24} />}
+      </div>
+
+      {/* Info */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <h3 className="font-semibold text-slate-200 group-hover:text-white truncate">
+            {project.type === 'local' ? project.name : project.repo}
+          </h3>
+          {project.access === 'Private' && <Lock size={12} className="text-amber-500/80" />}
+        </div>
+        <div className="flex items-center gap-3 mt-1 text-xs text-slate-500">
+          <span className="capitalize">{project.type}</span>
+          <span className="w-1 h-1 rounded-full bg-slate-700" />
+          {project.branch && <span className="font-mono">{project.branch}</span>}
+          {project.languages && (
+            <div className="flex gap-1">
+               {Object.keys(project.languages).slice(0, 2).map(l => (
+                 <span key={l} className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">{l}</span>
+               ))}
+            </div>
+          )}
         </div>
       </div>
-    </div>
+
+      {/* List View Metadata Columns */}
+      {isList && (
+        <div className="hidden md:flex items-center gap-8 text-sm text-slate-400">
+          <div className="w-32 flex flex-col items-end">
+            <span className="text-xs text-slate-600 uppercase tracking-wider">Last Scan</span>
+            <span className="font-medium text-slate-300">Never</span>
+          </div>
+          <div className="w-24 flex justify-end">
+             <span className={`px-2 py-1 rounded-full text-xs font-medium border ${
+               project.access === 'Private' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+             }`}>
+               {project.access}
+             </span>
+          </div>
+        </div>
+      )}
+
+      {/* Actions */}
+      <div className={`flex items-center gap-2 ${isList ? '' : 'mt-auto pt-4 border-t border-white/5'}`}>
+        {/* SAST SCAN */}
+        <button 
+          onClick={(e) => { e.stopPropagation(); onScan(); }}
+          disabled={isScanning}
+          className={`
+            px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-2
+            ${isScanning 
+              ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20 cursor-wait' 
+              : 'bg-white/5 hover:bg-blue-600 hover:text-white text-slate-300 border border-white/10 hover:border-transparent'}
+          `}
+          title="Run Static Analysis"
+        >
+          {isScanning ? <RefreshCw size={14} className="animate-spin" /> : <Zap size={14} />}
+          {isScanning ? 'Scanning...' : 'Scan'}
+        </button>
+
+        {/* DAST SCAN - Now visible directly */}
+        <button 
+          onClick={(e) => { e.stopPropagation(); onDast(); }}
+          className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-2 bg-white/5 hover:bg-purple-600 hover:text-white text-slate-300 border border-white/10 hover:border-transparent"
+          title="Run Dynamic Analysis (Needs Target URL)"
+        >
+          <Globe2 size={14} />
+          <span className="hidden sm:inline">DAST</span>
+        </button>
+
+        {/* SLACK TICKET - New Button */}
+        <button 
+          onClick={(e) => { e.stopPropagation(); onTicket(); }}
+          className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-2 bg-white/5 hover:bg-[#E01E5A] hover:text-white text-slate-300 border border-white/10 hover:border-transparent"
+          title="Raise Slack Ticket"
+        >
+          <MessageSquare size={14} />
+          <span className="hidden sm:inline">Ticket</span>
+        </button>
+
+        {/* Delete Menu */}
+        {project.canDelete && (
+          <div className="relative group/menu ml-auto">
+             <button 
+                onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                className="p-1.5 rounded-lg hover:bg-red-500/10 text-slate-500 hover:text-red-400 transition-colors"
+                title="Delete Project"
+             >
+               <Trash2 size={16} />
+             </button>
+          </div>
+        )}
+      </div>
+    </motion.div>
   );
 }

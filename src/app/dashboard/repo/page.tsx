@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import CloudBoltIcon from '@/components/CloudBoltIcon';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
@@ -262,9 +261,6 @@ export default function RepositoryBrowser() {
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <Link href="/dashboard" className="flex items-center space-x-2">
-                <div className="text-blue-600">
-                  <CloudBoltIcon />
-                </div>
                 <span className="text-xl font-bold text-gray-900">
                   Code View
                 </span>

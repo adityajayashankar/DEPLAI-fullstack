@@ -3,7 +3,6 @@
 import { use } from 'react';
 import Link from 'next/link';
 import ScanResults from '@/components/scanresults';
-import CloudBoltIcon from '@/components/CloudBoltIcon';
 
 export default function ScanDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   // Unwrap params using React.use() for Next.js 15+
@@ -17,9 +16,6 @@ export default function ScanDetailsPage({ params }: { params: Promise<{ id: stri
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <Link href="/dashboard" className="flex items-center space-x-2">
-                <div className="text-blue-600">
-                  <CloudBoltIcon />
-                </div>
                 <span className="text-xl font-bold text-gray-900">Scan Results</span>
               </Link>
             </div>

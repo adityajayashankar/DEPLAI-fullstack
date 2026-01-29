@@ -1,18 +1,24 @@
-CREATE DATABASE deplai;
+-- Create database
+CREATE DATABASE IF NOT EXISTS deplai;
 USE deplai;
 
+-- =====================================================
+-- Core Tables
+-- =====================================================
+
 -- Users table
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
     id VARCHAR(36) PRIMARY KEY,
     email VARCHAR(255) NOT NULL UNIQUE,
     name VARCHAR(255),
     password_hash VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_email (email)
 );
 
 -- GitHub installations
-CREATE TABLE github_installations (
+CREATE TABLE IF NOT EXISTS github_installations (
     id VARCHAR(36) PRIMARY KEY,
     installation_id BIGINT NOT NULL UNIQUE,
     account_login VARCHAR(255) NOT NULL,
@@ -25,11 +31,12 @@ CREATE TABLE github_installations (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     INDEX idx_account_login (account_login),
-    INDEX idx_user_id (user_id)
+    INDEX idx_user_id (user_id),
+    INDEX idx_installation_id (installation_id)
 );
 
 -- GitHub repositories
-CREATE TABLE github_repositories (
+CREATE TABLE IF NOT EXISTS github_repositories (
     id VARCHAR(36) PRIMARY KEY,
     installation_id VARCHAR(36) NOT NULL,
     github_repo_id BIGINT NOT NULL,
@@ -40,7 +47,7 @@ CREATE TABLE github_repositories (
     webhook_id BIGINT,
     last_synced_at TIMESTAMP NULL,
     metadata JSON,
-    needs_refresh BOOLEAN DEFAULT true,
+    needs_refresh BOOLEAN DEFAULT TRUE,
     last_cloned_at TIMESTAMP NULL,
     last_commit_sha VARCHAR(40) NULL,
     last_push_at TIMESTAMP NULL,
@@ -49,11 +56,12 @@ CREATE TABLE github_repositories (
     FOREIGN KEY (installation_id) REFERENCES github_installations(id) ON DELETE CASCADE,
     UNIQUE KEY unique_repo (installation_id, github_repo_id),
     INDEX idx_full_name (full_name),
-    INDEX idx_needs_refresh (needs_refresh)
+    INDEX idx_needs_refresh (needs_refresh),
+    INDEX idx_github_repo_id (github_repo_id)
 );
 
--- Projects
-CREATE TABLE projects (
+-- Projects (both GitHub and local)
+CREATE TABLE IF NOT EXISTS projects (
     id VARCHAR(36) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     project_type VARCHAR(20) NOT NULL DEFAULT 'github',
@@ -68,11 +76,12 @@ CREATE TABLE projects (
     FOREIGN KEY (repository_id) REFERENCES github_repositories(id) ON DELETE SET NULL,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     INDEX idx_project_type (project_type),
-    INDEX idx_user_type (user_id, project_type)
+    INDEX idx_user_type (user_id, project_type),
+    INDEX idx_user_id (user_id)
 );
 
 -- GitHub access tokens (cached)
-CREATE TABLE github_access_tokens (
+CREATE TABLE IF NOT EXISTS github_access_tokens (
     id VARCHAR(36) PRIMARY KEY,
     installation_id VARCHAR(36) NOT NULL,
     token_encrypted TEXT NOT NULL,
@@ -84,7 +93,7 @@ CREATE TABLE github_access_tokens (
 );
 
 -- Runs (scan jobs)
-CREATE TABLE runs (
+CREATE TABLE IF NOT EXISTS runs (
     id VARCHAR(36) PRIMARY KEY,
     project_id VARCHAR(36) NOT NULL,
     repository_id VARCHAR(36) NOT NULL,
@@ -100,30 +109,34 @@ CREATE TABLE runs (
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
     FOREIGN KEY (repository_id) REFERENCES github_repositories(id) ON DELETE CASCADE,
     INDEX idx_status (status),
-    INDEX idx_created_at (created_at)
+    INDEX idx_created_at (created_at),
+    INDEX idx_project_id (project_id),
+    INDEX idx_trigger_type (trigger_type)
 );
--- Findings table
-CREATE TABLE findings (
-  id BIGINT AUTO_INCREMENT PRIMARY KEY,
 
-  scan_id VARCHAR(255) NOT NULL,
-  repo_url TEXT NOT NULL,
+-- =====================================================
+-- Verification Queries
+-- =====================================================
 
-  category VARCHAR(100),
-  severity ENUM('low', 'medium', 'high', 'critical') NOT NULL,
-  status ENUM('open', 'false_positive', 'fixed') DEFAULT 'open',
+-- Check all tables
+SHOW TABLES;
 
-  title VARCHAR(255) NOT NULL,
-  description TEXT,
+-- Check table structures
+DESCRIBE users;
+DESCRIBE github_installations;
+DESCRIBE github_repositories;
+DESCRIBE projects;
+DESCRIBE github_access_tokens;
+DESCRIBE runs;
 
-  tool VARCHAR(100),
-  evidence JSON,
-
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    ON UPDATE CURRENT_TIMESTAMP,
-
-  INDEX idx_scan_id (scan_id),
-  INDEX idx_severity (severity),
-  INDEX idx_category (category)
-);
+-- Check constraints
+SELECT 
+    TABLE_NAME,
+    CONSTRAINT_NAME,
+    CONSTRAINT_TYPE
+FROM 
+    INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+WHERE 
+    TABLE_SCHEMA = 'deplai'
+ORDER BY 
+    TABLE_NAME, CONSTRAINT_TYPE;
