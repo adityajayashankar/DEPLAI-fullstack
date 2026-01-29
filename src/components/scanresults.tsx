@@ -32,7 +32,13 @@ import {
   HelpCircle,
   Bug,
   Lock,
-  ChevronUp
+  ChevronUp,
+  Share2,
+  MessageSquare,
+  Trello, // Used as Jira icon proxy
+  Send,
+  Loader2,
+  Link as LinkIcon
 } from 'lucide-react';
 
 // --- HELPERS ---
@@ -79,7 +85,255 @@ const SimpleMarkdown = ({ children }: { children: string }) => {
   );
 };
 
-// --- SUB-COMPONENTS ---
+// --- NEW COMPONENT: TICKET MANAGER ---
+
+const TicketManager = ({ finding }: { finding: any }) => {
+  const [platform, setPlatform] = useState<'jira' | 'slack'>('jira');
+  const [status, setStatus] = useState<'idle' | 'sending' | 'success'>('idle');
+  const [ticketId, setTicketId] = useState<string>('');
+
+  // Pre-fill data based on finding
+  const defaultTitle = `[${finding.severity}] ${finding.title}`;
+  const defaultDesc = `Vulnerability found in ${finding.filePath || 'codebase'}.\nRule ID: ${finding.ruleId}\n\nSuggested Fix: See DeplAI dashboard for remediation code.`;
+  
+  const [formData, setFormData] = useState({
+    project: 'SEC',
+    title: defaultTitle,
+    description: defaultDesc,
+    assignee: 'Unassigned',
+    channel: '#security-alerts'
+  });
+
+  const handleSend = () => {
+    setStatus('sending');
+    // Simulate API call
+    setTimeout(() => {
+      setStatus('success');
+      setTicketId(platform === 'jira' ? `SEC-${Math.floor(Math.random() * 1000)}` : `msg_${Math.floor(Math.random() * 10000)}`);
+    }, 1500);
+  };
+
+  const reset = () => {
+    setStatus('idle');
+    setTicketId('');
+  };
+
+  if (status === 'success') {
+    return (
+      <div className="h-full flex flex-col items-center justify-center p-8 bg-[#0D1117] rounded-xl border border-slate-700 animate-in fade-in zoom-in duration-300">
+        <div className="w-16 h-16 bg-emerald-500/10 rounded-full flex items-center justify-center border border-emerald-500/20 mb-4">
+          <CheckCircle2 className="w-8 h-8 text-emerald-500" />
+        </div>
+        <h3 className="text-white text-lg font-bold mb-2">
+          {platform === 'jira' ? 'Ticket Created Successfully' : 'Message Sent to Slack'}
+        </h3>
+        <p className="text-slate-400 text-sm mb-6 text-center max-w-md">
+          {platform === 'jira' 
+            ? `Issue ${ticketId} has been added to the backlog and assigned to the engineering team.` 
+            : `The alert has been posted to ${formData.channel} for immediate visibility.`}
+        </p>
+        <div className="flex gap-3">
+          <button onClick={reset} className="px-4 py-2 text-sm text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors">
+            Create Another
+          </button>
+          <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium shadow-lg shadow-blue-900/20">
+            <ExternalLink size={14} />
+            {platform === 'jira' ? 'View in Jira' : 'Open Slack'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full font-sans">
+      {/* Sidebar: Platform Selection */}
+      <div className="col-span-1 space-y-4">
+        <div className="bg-[#151E32] rounded-xl border border-slate-700 p-4">
+          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Destination</h3>
+          <div className="space-y-2">
+            <button
+              onClick={() => setPlatform('jira')}
+              className={`w-full flex items-center gap-3 p-3 rounded-lg border transition-all ${
+                platform === 'jira' 
+                  ? 'bg-blue-600/10 border-blue-500/50 text-white shadow-[0_0_15px_rgba(37,99,235,0.1)]' 
+                  : 'bg-slate-800/50 border-transparent text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+              }`}
+            >
+              <div className={`p-2 rounded bg-white/10 ${platform === 'jira' ? 'text-blue-400' : 'text-slate-500'}`}>
+                <Trello size={18} />
+              </div>
+              <div className="text-left">
+                <div className="font-semibold text-sm">Jira Software</div>
+                <div className="text-xs opacity-70">Create bug ticket</div>
+              </div>
+              {platform === 'jira' && <div className="ml-auto w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,1)]"></div>}
+            </button>
+
+            <button
+              onClick={() => setPlatform('slack')}
+              className={`w-full flex items-center gap-3 p-3 rounded-lg border transition-all ${
+                platform === 'slack' 
+                  ? 'bg-purple-600/10 border-purple-500/50 text-white shadow-[0_0_15px_rgba(147,51,234,0.1)]' 
+                  : 'bg-slate-800/50 border-transparent text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+              }`}
+            >
+              <div className={`p-2 rounded bg-white/10 ${platform === 'slack' ? 'text-purple-400' : 'text-slate-500'}`}>
+                <MessageSquare size={18} />
+              </div>
+              <div className="text-left">
+                <div className="font-semibold text-sm">Slack</div>
+                <div className="text-xs opacity-70">Send alert to channel</div>
+              </div>
+              {platform === 'slack' && <div className="ml-auto w-2 h-2 rounded-full bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,1)]"></div>}
+            </button>
+          </div>
+        </div>
+
+        <div className="bg-[#151E32] rounded-xl border border-slate-700 p-4">
+          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Context Data</h3>
+          <div className="space-y-3">
+             <div className="flex justify-between items-center text-sm">
+                <span className="text-slate-500">Severity</span>
+                <span className={`px-2 py-0.5 rounded text-xs font-bold ${
+                  finding.severity === 'CRITICAL' ? 'bg-red-500/20 text-red-400' : 
+                  finding.severity === 'HIGH' ? 'bg-orange-500/20 text-orange-400' : 
+                  'bg-blue-500/20 text-blue-400'
+                }`}>{finding.severity}</span>
+             </div>
+             <div className="flex justify-between items-center text-sm">
+                <span className="text-slate-500">Tool</span>
+                <span className="text-slate-300">{finding.tool}</span>
+             </div>
+             <div className="flex justify-between items-center text-sm">
+                <span className="text-slate-500">Rule ID</span>
+                <span className="font-mono text-xs text-slate-300">{finding.ruleId}</span>
+             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Main: Form/Preview */}
+      <div className="col-span-1 lg:col-span-2 flex flex-col h-full bg-[#151E32] rounded-xl border border-slate-700 overflow-hidden">
+        <div className="px-5 py-3 border-b border-slate-700 bg-slate-800/30 flex justify-between items-center">
+          <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+            {platform === 'jira' ? 'New Issue Details' : 'Compose Message'}
+          </h3>
+          <span className="text-xs text-slate-500 font-mono">Workspace: DeplAI-Corp</span>
+        </div>
+
+        <div className="p-5 flex-1 overflow-y-auto space-y-4">
+          {platform === 'jira' ? (
+            <>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-slate-400 mb-1.5">Project</label>
+                  <select 
+                    value={formData.project}
+                    onChange={(e) => setFormData({...formData, project: e.target.value})}
+                    className="w-full bg-[#0B1120] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="SEC">Security (SEC)</option>
+                    <option value="ENG">Engineering (ENG)</option>
+                    <option value="DEVOPS">DevOps (OPS)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-400 mb-1.5">Issue Type</label>
+                  <div className="w-full bg-[#0B1120] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white flex items-center gap-2 opacity-70 cursor-not-allowed">
+                    <div className="w-4 h-4 rounded bg-red-500 flex items-center justify-center text-[10px] font-bold">!</div>
+                    Bug / Vulnerability
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1.5">Summary</label>
+                <input 
+                  type="text" 
+                  value={formData.title}
+                  onChange={(e) => setFormData({...formData, title: e.target.value})}
+                  className="w-full bg-[#0B1120] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1.5">Description</label>
+                <textarea 
+                  value={formData.description}
+                  onChange={(e) => setFormData({...formData, description: e.target.value})}
+                  rows={6}
+                  className="w-full bg-[#0B1120] border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-300 focus:outline-none focus:border-blue-500 font-mono"
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1.5">Channel</label>
+                <select 
+                  value={formData.channel}
+                  onChange={(e) => setFormData({...formData, channel: e.target.value})}
+                  className="w-full bg-[#0B1120] border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-purple-500"
+                >
+                  <option value="#security-alerts">#security-alerts</option>
+                  <option value="#engineering">#engineering</option>
+                  <option value="#frontend-dev">#frontend-dev</option>
+                  <option value="@security-lead">Direct Message: Security Lead</option>
+                </select>
+              </div>
+              
+              <div className="bg-[#0B1120] rounded-lg border border-slate-700 p-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded bg-blue-600 flex items-center justify-center text-white font-bold text-xs">DA</div>
+                  <div className="flex-1">
+                    <div className="flex items-baseline gap-2">
+                      <span className="font-bold text-slate-200 text-sm">DeplAI Bot</span>
+                      <span className="text-xs text-slate-500">APP 12:42 PM</span>
+                    </div>
+                    <div className="mt-1 text-slate-300 text-sm">
+                       <p className="mb-2">🚨 <span className="font-semibold">New Vulnerability Detected</span></p>
+                       <div className="pl-3 border-l-2 border-red-500">
+                          <p className="font-semibold text-red-400">{formData.title}</p>
+                          <p className="text-xs text-slate-400 mt-1">{formData.description}</p>
+                       </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="p-5 border-t border-slate-700 bg-slate-800/30 flex justify-end">
+          <button 
+            onClick={handleSend}
+            disabled={status === 'sending'}
+            className={`flex items-center gap-2 px-6 py-2 rounded-lg text-sm font-bold text-white transition-all shadow-lg ${
+              platform === 'jira' 
+                ? 'bg-blue-600 hover:bg-blue-500 shadow-blue-900/20' 
+                : 'bg-purple-600 hover:bg-purple-500 shadow-purple-900/20'
+            } ${status === 'sending' ? 'opacity-70 cursor-wait' : ''}`}
+          >
+            {status === 'sending' ? (
+              <>
+                <Loader2 size={16} className="animate-spin" />
+                Processing...
+              </>
+            ) : (
+              <>
+                <Send size={16} />
+                {platform === 'jira' ? 'Create Ticket' : 'Send Alert'}
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- EXISTING SUB-COMPONENTS ---
 
 const RemediationView = ({ remediationPlan }: { remediationPlan?: any }) => {
   const [copied, setCopied] = useState(false);
@@ -495,7 +749,7 @@ const EvidenceView = ({ codeSnippet, evidence, finding }: { codeSnippet: string,
 // --- MAIN FINDING DETAILS COMPONENT ---
 
 const FindingDetails = ({ finding }: { finding: any }) => {
-  const [activeTab, setActiveTab] = useState<'remediation' | 'impact' | 'triage' | 'evidence'>('remediation');
+  const [activeTab, setActiveTab] = useState<'remediation' | 'impact' | 'triage' | 'evidence' | 'actions'>('remediation');
 
   // Parse Data
   let evidence = finding.evidence || {};
@@ -529,18 +783,23 @@ const FindingDetails = ({ finding }: { finding: any }) => {
           { id: 'remediation', icon: Sparkles, label: 'Remediation' },
           { id: 'impact', icon: Package, label: 'Package & Impact' },
           { id: 'triage', icon: List, label: 'Triage Info' },
-          { id: 'evidence', icon: FileText, label: 'Evidence Pack' }
+          { id: 'evidence', icon: FileText, label: 'Evidence Pack' },
+          { id: 'actions', icon: Share2, label: 'Collaborate', badge: 'New' }
         ].map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id as any)}
-            className={`flex items-center gap-2 py-4 px-4 text-sm font-medium border-b-2 transition-colors ${
+            className={`relative flex items-center gap-2 py-4 px-4 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
               activeTab === tab.id 
                 ? 'border-blue-500 text-blue-400' 
                 : 'border-transparent text-slate-500 hover:text-slate-300 hover:border-slate-700'
             }`}
           >
-            <tab.icon size={16} /> {tab.label}
+            <tab.icon size={16} /> 
+            {tab.label}
+            {tab.badge && (
+               <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-blue-500/10 text-blue-400 text-[10px] font-bold border border-blue-500/20">{tab.badge}</span>
+            )}
           </button>
         ))}
       </div>
@@ -551,6 +810,7 @@ const FindingDetails = ({ finding }: { finding: any }) => {
         {activeTab === 'impact' && <ImpactView data={scaData} />}
         {activeTab === 'triage' && <TriageView finding={finding}/>}
         {activeTab === 'evidence' && <EvidenceView codeSnippet={codeSnippet} evidence={evidence} finding={finding} />}
+        {activeTab === 'actions' && <TicketManager finding={finding} />}
       </div>
     </div>
   );
