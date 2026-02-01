@@ -1,17 +1,65 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
+// --- Types ---
 interface FileItem {
   name: string;
   path: string;
   type: 'dir' | 'file';
   size: number | null;
 }
+
+// --- Icons Components ---
+const FileIcon = ({ className }: { className?: string }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+  </svg>
+);
+
+const FolderIcon = ({ className }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+    <path d="M19.5 21a3 3 0 0 0 3-3v-4.5a3 3 0 0 0-3-3h-15a3 3 0 0 0-3 3V18a3 3 0 0 0 3 3h15ZM1.5 10.146V6a3 3 0 0 1 3-3h5.379a2.25 2.25 0 0 1 1.59.659l2.122 2.121c.14.141.331.22.53.22H19.5a3 3 0 0 1 3 3v1.146A4.483 4.483 0 0 0 19.5 9h-15a4.483 4.483 0 0 0-3 1.146Z" />
+  </svg>
+);
+
+const ChevronRightIcon = ({ className }: { className?: string }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+  </svg>
+);
+
+const RefreshIcon = ({ className, spin }: { className?: string; spin?: boolean }) => (
+  <svg className={`${className} ${spin ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+  </svg>
+);
+
+const BackIcon = ({ className }: { className?: string }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+  </svg>
+);
+
+const CopyIcon = ({ className }: { className?: string }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+  </svg>
+);
+
+const CheckIcon = ({ className }: { className?: string }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+  </svg>
+);
+
+const HomeIcon = ({ className }: { className?: string }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+  </svg>
+);
 
 export default function RepositoryBrowser() {
   const router = useRouter();
@@ -30,6 +78,7 @@ export default function RepositoryBrowser() {
   
   const currentPath = searchParams.get('path') || '';
 
+  // State
   const [authLoading, setAuthLoading] = useState(true);
   const [projectName, setProjectName] = useState('');
   const [contents, setContents] = useState<FileItem[]>([]);
@@ -38,6 +87,7 @@ export default function RepositoryBrowser() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   // Check authentication first
   useEffect(() => {
@@ -187,6 +237,37 @@ export default function RepositoryBrowser() {
     window.location.href = buildNavigationUrl(itemPath);
   }
 
+  function handleBackClick() {
+    if (!currentPath) return;
+    const parentPath = currentPath.includes('/')
+      ? currentPath.split('/').slice(0, -1).join('/')
+      : '';
+    window.location.href = buildNavigationUrl(parentPath);
+  }
+
+  function handleBreadcrumbClick(path: string) {
+    window.location.href = buildNavigationUrl(path);
+  }
+
+  function handleCopy() {
+    if (fileContent) {
+      try {
+        const textArea = document.createElement("textarea");
+        textArea.value = fileContent;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textArea);
+        setCopied(true);
+      } catch (err) {
+        navigator.clipboard.writeText(fileContent).then(() => {
+          setCopied(true);
+        });
+      }
+      setTimeout(() => setCopied(false), 2000);
+    }
+  }
+
   function getLanguageFromFilename(filename: string): string {
     const extension = filename.split('.').pop()?.toLowerCase();
     const languageMap: { [key: string]: string } = {
@@ -216,36 +297,46 @@ export default function RepositoryBrowser() {
       'yml': 'yaml',
       'md': 'markdown',
       'txt': 'text',
+      'dockerfile': 'dockerfile',
     };
     return languageMap[extension || ''] || 'text';
   }
 
   const pathParts = currentPath ? currentPath.split('/') : [];
   const breadcrumbs = [
-    { name: projectName || 'Project', path: '' },
+    { name: projectName || 'root', path: '' },
     ...pathParts.map((part, index) => ({
       name: part,
       path: pathParts.slice(0, index + 1).join('/'),
     })),
   ];
 
+  // --- Loading State ---
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-[#0F1117] flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading...</p>
+          <p className="text-gray-400 font-mono text-sm">Initializing environment...</p>
         </div>
       </div>
     );
   }
 
+  // --- No Project State ---
   if ((!isLocal && (!owner || !repo)) || (isLocal && !projectId)) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-gray-600 mb-4">No project selected</p>
-          <Link href="/dashboard" className="text-blue-600 hover:underline">
+      <div className="min-h-screen bg-[#0F1117] flex items-center justify-center">
+        <div className="text-center max-w-md px-6">
+          <div className="w-16 h-16 bg-slate-800 rounded-2xl flex items-center justify-center mx-auto mb-6">
+            <FolderIcon className="w-8 h-8 text-slate-500" />
+          </div>
+          <h2 className="text-xl font-semibold text-white mb-2">No Repository Selected</h2>
+          <p className="text-gray-500 mb-8">Please return to the dashboard and select a repository to browse its contents.</p>
+          <Link 
+            href="/dashboard"
+            className="inline-flex items-center px-6 py-3 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 transition shadow-lg shadow-blue-900/20"
+          >
             Go to Dashboard
           </Link>
         </div>
@@ -254,256 +345,209 @@ export default function RepositoryBrowser() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-[#0F1117] text-slate-300 font-sans selection:bg-blue-500/30">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="container mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <Link href="/dashboard" className="flex items-center space-x-2">
-                <span className="text-xl font-bold text-gray-900">
-                  Code View
-                </span>
-              </Link>
-            </div>
+      <header className="sticky top-0 z-20 border-b border-slate-800 bg-[#0F1117]/80 backdrop-blur-md">
+        <div className="container mx-auto px-4 h-16 flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <button
+              onClick={handleBackClick}
+              disabled={!currentPath}
+              className={`p-2 -ml-2 rounded-lg transition ${!currentPath ? 'text-slate-600 cursor-not-allowed' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
+              title="Back"
+            >
+              <BackIcon className="w-5 h-5" />
+            </button>
+            
+            <div className="h-6 w-px bg-slate-800 mx-2 hidden sm:block"></div>
 
-            <div className="flex items-center space-x-3">
-              {!isLocal && (
-                <button
-                  onClick={handleRefresh}
-                  disabled={refreshing}
-                  className="flex items-center space-x-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition disabled:opacity-50"
-                >
-                  <svg
-                    className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                    />
-                  </svg>
-                  <span>{refreshing ? 'Refreshing...' : 'Refresh'}</span>
-                </button>
-              )}
-
-              <Link
-                href="/dashboard"
-                className="hover:opacity-70 transition"
-                title="Back to Dashboard"
-              >
-                <svg
-                  width="24"
-                  height="25"
-                  viewBox="0 0 24 25"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path
-                    d="M18.125 6.62502C18.125 6.32168 17.9423 6.0482 17.662 5.93211C17.3818 5.81603 17.0592 5.88019 16.8447 6.09469L10.5947 12.3447C10.3018 12.6376 10.3018 13.1125 10.5947 13.4054L16.8447 19.6554C17.0592 19.8699 17.3818 19.934 17.662 19.8179C17.9423 19.7018 18.125 19.4284 18.125 19.125V6.62502Z"
-                    fill="#323544"
-                  />
-                  <path
-                    d="M13.4053 7.15535C13.6982 6.86246 13.6982 6.38758 13.4053 6.09469C13.1124 5.8018 12.6376 5.8018 12.3447 6.09469L6.09467 12.3447C5.80178 12.6376 5.80178 13.1125 6.09467 13.4054L12.3447 19.6554C12.6376 19.9482 13.1124 19.9482 13.4053 19.6554C13.6982 19.3625 13.6982 18.8876 13.4053 18.5947L7.68566 12.875L13.4053 7.15535Z"
-                    fill="#323544"
-                  />
-                </svg>
-              </Link>
-            </div>
+            <nav className="hidden sm:flex items-center text-sm overflow-hidden whitespace-nowrap mask-linear-fade">
+              {breadcrumbs.map((crumb, index) => (
+                <div key={index} className="flex items-center">
+                  {index > 0 && <ChevronRightIcon className="w-4 h-4 text-slate-600 mx-1 flex-shrink-0" />}
+                  {index === breadcrumbs.length - 1 ? (
+                    <span className="font-semibold text-white flex items-center">
+                      {index === 0 && <span className="text-blue-500 mr-2">/</span>}
+                      {crumb.name}
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => handleBreadcrumbClick(crumb.path)}
+                      className="text-slate-400 hover:text-blue-400 hover:underline decoration-blue-500/50 underline-offset-4 transition-colors flex items-center"
+                    >
+                      {index === 0 && <span className="text-slate-600 mr-2">/</span>}
+                      {crumb.name}
+                    </button>
+                  )}
+                </div>
+              ))}
+            </nav>
           </div>
 
-          {/* Breadcrumb */}
-          <div className="flex items-center space-x-2 mt-3 text-sm">
-            {breadcrumbs.map((crumb, index) => (
-              <div key={index} className="flex items-center space-x-2">
-                {index > 0 && <span className="text-gray-400">/</span>}
-                {index === breadcrumbs.length - 1 ? (
-                  <span className="text-gray-900 font-medium">{crumb.name}</span>
-                ) : (
-                  <Link
-                    href={buildNavigationUrl(crumb.path)}
-                    className="text-blue-600 hover:underline"
-                  >
-                    {crumb.name}
-                  </Link>
-                )}
-              </div>
-            ))}
+          <div className="flex items-center space-x-3">
+            {!isLocal && (
+              <button
+                onClick={handleRefresh}
+                disabled={refreshing}
+                className="flex items-center space-x-2 px-3 py-1.5 text-xs font-medium text-slate-400 bg-slate-900 border border-slate-800 hover:border-slate-700 hover:text-white rounded-md transition disabled:opacity-50"
+              >
+                <RefreshIcon className="w-3.5 h-3.5" spin={refreshing} />
+                <span>{refreshing ? 'Syncing...' : 'Sync'}</span>
+              </button>
+            )}
+            
+            <div className="px-3 py-1.5 rounded-full bg-slate-900 border border-slate-800 text-xs font-mono text-slate-400">
+              {isLocal ? 'LOC' : 'GIT'}
+            </div>
+
+            <Link
+              href="/dashboard"
+              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition"
+              title="Back to Dashboard"
+            >
+              <HomeIcon className="w-5 h-5" />
+            </Link>
           </div>
         </div>
       </header>
 
       {/* Main Content */}
-      <div className="container mx-auto px-6 py-8">
-        <div className={`grid gap-6 ${fileContent ? 'lg:grid-cols-2' : 'lg:grid-cols-1'}`}>
-          {/* File Browser */}
-          <div className="bg-white rounded-xl border border-gray-200">
-            <div className="p-6 border-b border-gray-200">
-              <h2 className="text-lg font-semibold text-gray-900">Files</h2>
-            </div>
+      <main className="container mx-auto px-4 py-6">
+        <div className={`grid gap-6 ${fileContent ? 'lg:grid-cols-12' : 'lg:grid-cols-1'}`}>
+          
+          {/* File Explorer Panel */}
+          <div className={`flex flex-col h-[calc(100vh-8rem)] ${fileContent ? 'lg:col-span-3 lg:h-[calc(100vh-8rem)]' : 'lg:col-span-12'}`}>
+            <div className="bg-[#161b22] rounded-xl border border-slate-800 shadow-xl shadow-black/20 flex flex-col h-full overflow-hidden">
+              <div className="p-4 border-b border-slate-800/50 bg-[#161b22]">
+                <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Explorer</h2>
+              </div>
 
-            <div className="p-6 max-h-[600px] overflow-y-auto">
-              {loading && !fileContent ? (
-                <div className="text-center py-12">
-                  <div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto"></div>
-                  <p className="text-gray-500 mt-4">Loading...</p>
-                </div>
-              ) : error ? (
-                <div className="text-center py-12">
-                  <p className="text-red-600">{error}</p>
-                  <button
-                    onClick={fetchContents}
-                    className="mt-4 text-blue-600 hover:underline"
-                  >
-                    Try again
-                  </button>
-                </div>
-              ) : (
-                <div>
-                  {/* Parent directory link */}
-                  {currentPath && (
-                    <>
-                      <Link
-                        href={buildNavigationUrl(
-                          currentPath.includes('/')
-                            ? currentPath.split('/').slice(0, -1).join('/')
-                            : ''
-                        )}
-                        className="flex items-center space-x-3 p-4 hover:bg-gray-50 transition border-l-4 border-l-transparent"
+              <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent p-2">
+                {loading && !fileContent ? (
+                  <div className="flex flex-col items-center justify-center h-40 space-y-3">
+                    <div className="animate-spin w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+                    <p className="text-xs text-slate-500">Fetching file tree...</p>
+                  </div>
+                ) : error ? (
+                  <div className="p-4 text-center">
+                    <p className="text-sm text-red-400 mb-2">{error}</p>
+                    <button onClick={() => fetchContents()} className="text-xs text-blue-400 hover:underline">Retry</button>
+                  </div>
+                ) : (
+                  <div className="space-y-0.5">
+                    {/* Parent Directory Link */}
+                    {currentPath && (
+                      <button
+                        onClick={handleBackClick}
+                        className="flex w-full items-center space-x-2 px-3 py-2 rounded-md hover:bg-slate-800/50 text-slate-400 hover:text-white transition group"
                       >
-                        <svg
-                          className="w-5 h-5 text-gray-400"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M10 19l-7-7m0 0l7-7m-7 7h18"
-                          />
-                        </svg>
-                        <span className="text-gray-600">..</span>
-                      </Link>
-                      <div className="border-b border-gray-200"></div>
-                    </>
-                  )}
+                        <BackIcon className="w-4 h-4 opacity-50 group-hover:opacity-100 transition-opacity" />
+                        <span className="text-sm font-mono">..</span>
+                      </button>
+                    )}
 
-                  {contents.map((item, index) => (
-                    <div key={item.path}>
+                    {contents.length === 0 && (
+                      <div className="text-center py-8 text-slate-600 text-sm italic">
+                        Empty directory
+                      </div>
+                    )}
+
+                    {contents.map((item) => (
                       <div
-                        onClick={() =>
-                          item.type === 'dir'
-                            ? handleDirectoryClick(item.path)
-                            : handleFileClick(item)
-                        }
-                        className={`flex items-center justify-between p-4 cursor-pointer transition ${
-                          selectedFile === item.path 
-                            ? 'bg-blue-50 border-l-4 border-l-blue-600' 
-                            : 'hover:bg-gray-50 border-l-4 border-l-transparent'
-                        }`}
+                        key={item.path}
+                        onClick={() => item.type === 'dir' ? handleDirectoryClick(item.path) : handleFileClick(item)}
+                        className={`
+                          group flex items-center justify-between px-3 py-2 rounded-md cursor-pointer transition-all duration-200 border-l-2
+                          ${selectedFile === item.path 
+                            ? 'bg-blue-500/10 border-blue-500 text-blue-100' 
+                            : 'border-transparent hover:bg-slate-800 text-slate-400 hover:text-slate-200'
+                          }
+                        `}
                       >
-                        <div className="flex items-center space-x-3 flex-1">
+                        <div className="flex items-center space-x-2.5 min-w-0">
                           {item.type === 'dir' ? (
-                            <svg
-                              className="w-5 h-5 text-blue-500"
-                              fill="currentColor"
-                              viewBox="0 0 20 20"
-                            >
-                              <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
-                            </svg>
+                            <FolderIcon className={`w-4 h-4 flex-shrink-0 ${selectedFile === item.path ? 'text-blue-400' : 'text-slate-500 group-hover:text-blue-400'}`} />
                           ) : (
-                            <svg
-                              className="w-5 h-5 text-gray-400"
-                              fill="currentColor"
-                              viewBox="0 0 20 20"
-                            >
-                              <path
-                                fillRule="evenodd"
-                                d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z"
-                                clipRule="evenodd"
-                              />
-                            </svg>
+                            <FileIcon className={`w-4 h-4 flex-shrink-0 ${selectedFile === item.path ? 'text-blue-400' : 'text-slate-600 group-hover:text-slate-400'}`} />
                           )}
-                          <span className="text-gray-900 font-medium">{item.name}</span>
+                          <span className="text-sm truncate font-medium">{item.name}</span>
                         </div>
-
+                        
                         {item.type === 'file' && item.size !== null && (
-                          <span className="text-xs text-gray-500">
-                            {(item.size / 1024).toFixed(1)} KB
+                          <span className="text-[10px] text-slate-600 font-mono ml-2 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                            {item.size > 1024 ? `${(item.size / 1024).toFixed(1)}KB` : `${item.size}B`}
                           </span>
                         )}
                       </div>
-                      {index < contents.length - 1 && (
-                        <div className="border-b border-gray-200"></div>
-                      )}
-                    </div>
-                  ))}
-
-                  {contents.length === 0 && (
-                    <div className="text-center py-12 text-gray-500">
-                      Empty directory
-                    </div>
-                  )}
-                </div>
-              )}
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
-          {/* File Content Viewer */}
+          {/* Code Viewer Panel */}
           {fileContent && (
-            <div className="bg-white rounded-xl border border-gray-200">
-              <div className="p-6 border-b border-gray-200">
-                <h2 className="text-lg font-semibold text-gray-900">
-                  {selectedFile ? selectedFile.split('/').pop() : 'Select a file'}
-                </h2>
-              </div>
+            <div className="lg:col-span-9 h-[calc(100vh-8rem)]">
+              <div className="bg-[#161b22] rounded-xl border border-slate-800 shadow-xl shadow-black/20 flex flex-col h-full overflow-hidden">
+                {/* File Header */}
+                <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-[#161b22]">
+                  <div className="flex items-center space-x-3">
+                    <FileIcon className="w-4 h-4 text-blue-400" />
+                    <span className="text-sm font-mono text-slate-200">
+                      {selectedFile ? selectedFile.split('/').pop() : 'No file selected'}
+                    </span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={handleCopy}
+                      className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded transition relative group"
+                      title="Copy content"
+                    >
+                      {copied ? <CheckIcon className="w-4 h-4 text-green-400" /> : <CopyIcon className="w-4 h-4" />}
+                      <span className="absolute top-full right-0 mt-2 px-2 py-1 bg-black text-xs text-white rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity">
+                        {copied ? 'Copied!' : 'Copy'}
+                      </span>
+                    </button>
+                  </div>
+                </div>
 
-              <div className="p-6">
-                <div className="rounded-lg overflow-hidden">
-                  <SyntaxHighlighter
-                    language={getLanguageFromFilename(selectedFile || '')}
-                    style={vscDarkPlus}
-                    showLineNumbers={true}
-                    customStyle={{
-                      margin: 0,
-                      maxHeight: '600px',
-                      fontSize: '14px',
-                    }}
-                  >
-                    {fileContent}
-                  </SyntaxHighlighter>
+                {/* Editor Area */}
+                <div className="flex-1 overflow-auto bg-[#0d1117] relative group p-4 font-mono text-sm leading-relaxed text-slate-300">
+                  {loading ? (
+                    <div className="absolute inset-0 flex items-center justify-center bg-[#0d1117] z-10">
+                      <div className="animate-spin w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+                    </div>
+                  ) : (
+                    <pre className="whitespace-pre overflow-x-auto">
+                      <code>{fileContent}</code>
+                    </pre>
+                  )}
+                </div>
+                
+                {/* Footer status bar */}
+                <div className="px-4 py-1.5 bg-blue-600 text-white text-[10px] font-mono flex items-center justify-between">
+                  <span>{getLanguageFromFilename(selectedFile || '').toUpperCase()}</span>
+                  <span>UTF-8</span>
                 </div>
               </div>
             </div>
           )}
         </div>
-      </div>
+      </main>
 
-      {/* Footer Info */}
-      <div className="container mx-auto px-6 pb-8">
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <div className="flex items-start space-x-3">
-            <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <div>
-              {isLocal ? (
-                <p className="text-sm text-blue-900">
-                  <span className="font-semibold">Note:</span> This is a local project. Files are stored temporarily and can be deleted from the dashboard.
-                </p>
-              ) : (
-                <p className="text-sm text-blue-900">
-                  <span className="font-semibold">Note:</span> Changes are made in your IDE and automatically reflected here when pushed to GitHub.
-                </p>
-              )}
-            </div>
+      {/* Persistent Status Bar */}
+      <div className="fixed bottom-0 left-0 right-0 bg-blue-900/10 border-t border-slate-800 px-4 py-1 flex items-center justify-between text-[11px] text-slate-500 backdrop-blur-sm z-30">
+        <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-1.5">
+            <div className={`w-2 h-2 rounded-full ${isLocal ? 'bg-orange-500' : 'bg-green-500'}`}></div>
+            <span className="font-medium text-slate-400">
+              {isLocal ? 'Local Environment' : 'Connected to GitHub'}
+            </span>
           </div>
+        </div>
+        <div>
+          Repository Browser v1.2.0
         </div>
       </div>
     </div>
